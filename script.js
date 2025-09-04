@@ -1,18 +1,18 @@
 /* 
-  A5 Whiteboard Survey (Undo/Redo + Named Sessions + PNG Export)
-  – Pen/Eraser, brush size, colour wheel + hex
-  – A5 pages, add/switch
-  – Undo/Redo (history per page)
-  – Save/Load by session name (IndexedDB, private)
-  – Export current page as opaque PNG
+  A5 Whiteboard Survey (Mobile Auto-Fit)
+  – Keeps A5 aspect ratio, scales to fit any screen
+  – Resizes pixel buffer on demand WITHOUT losing current drawing
+  – All previous features: undo/redo, colour wheel, named sessions, save/load, export PNG
 
-  Learn while you build:
-  • History uses ImageData snapshots on stroke end.
-  • IndexedDB stores per-session PNG ArrayBuffers; session key is the name you type.
+  Fit strategy:
+  - Determine the inner size of the stage.
+  - Compute the largest A5 portrait rectangle that fits (aspect = 148/210).
+  - Set canvas CSS size to that rectangle.
+  - If CSS size or DPR changed, snapshot -> resize pixel buffer -> redraw.
 */
 
-const mmToPx = mm => (mm * 96) / 25.4;
-const A5 = { wMM: 148, hMM: 210 };
+const A5 = { w: 148, h: 210 };                 // mm proportions only (for aspect)
+const A5_ASPECT = A5.w / A5.h;                 // ~0.7047619
 
 // UI refs
 const UI = {
@@ -39,14 +39,13 @@ let state = {
   tool: 'pen',
   size: parseInt(UI.size.value, 10),
   color: '#111111',
-  pages: [],              // { id, canvas, ctx, dpr, history:[], future:[] }
+  pages: [],              // { id, canvas, ctx, dpr, history:[], future:[], cssW: number, cssH: number }
   activeIndex: -1,
   drawing: false,
-  last: { x: 0, y: 0 },
   maxHistory: 40
 };
 
-// ---------- IndexedDB ----------
+// ---------- IndexedDB (same as before) ----------
 const DB_NAME = 'A5WhiteboardDB';
 const DB_VERSION = 1;
 const STORE = 'pages';
@@ -94,7 +93,7 @@ function blobToArrayBuffer(blob){
 }
 function arrayBufferToBlob(buf, type='image/png'){ return new Blob([buf], { type }); }
 
-// ---------- init ----------
+// ---------- Init ----------
 UI.sizeValue.textContent = `${state.size} px`;
 drawColourWheel(UI.colorWheel);
 updateSwatch(state.color);
@@ -103,6 +102,7 @@ makePage();
 selectPage(0);
 wireUI();
 wireKeyboard();
+addResizeObservers();
 
 // ---------- UI wiring ----------
 function wireUI(){
@@ -128,7 +128,7 @@ function wireUI(){
     const name = UI.sessionName.value.trim();
     const blobs = await Promise.all(state.pages.map(pageToBlobOpaque));
     await saveSession(name, blobs);
-    pulse(UI.saveBtn, 'Saved');
+    pulse(UI.saveBtn, '✅ Saved');
   });
 
   UI.loadBtn.addEventListener('click', async () => {
@@ -136,9 +136,9 @@ function wireUI(){
     const rec = await loadSession(name);
     if (rec) {
       await restoreFromRecord(rec);
-      pulse(UI.loadBtn, 'Loaded');
+      pulse(UI.loadBtn, '📂 Loaded');
     } else {
-      pulse(UI.loadBtn, 'Not found');
+      pulse(UI.loadBtn, '⚠️ Not found');
     }
   });
 
@@ -166,7 +166,7 @@ function wireKeyboard(){
   window.addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase();
 
-    // Undo/Redo (support common combos)
+    // Undo/Redo
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && k === 'z') { e.preventDefault(); undo(); return; }
     if ((e.ctrlKey || e.metaKey) && (e.shiftKey && k === 'z')) { e.preventDefault(); redo(); return; }
     if ((e.ctrlKey) && k === 'y') { e.preventDefault(); redo(); return; }
@@ -198,38 +198,23 @@ function setTool(tool){
   }
 }
 
-// ---------- pages ----------
+// ---------- Pages ----------
 function makePage(){
   const canvas = document.createElement('canvas');
   canvas.className = 'page-canvas';
   canvas.setAttribute('role', 'tabpanel');
-  canvas.style.width  = `${A5.wMM}mm`;
-  canvas.style.height = `${A5.hMM}mm`;
   UI.pageStage.appendChild(canvas);
 
-  const dpr = Math.max(1, window.devicePixelRatio || 1);
-  const cssW = canvas.clientWidth  || mmToPx(A5.wMM);
-  const cssH = canvas.clientHeight || mmToPx(A5.hMM);
-  canvas.width  = Math.round(cssW * dpr);
-  canvas.height = Math.round(cssH * dpr);
-
   const ctx = canvas.getContext('2d');
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.lineJoin = 'round';
-  ctx.lineCap  = 'round';
-  ctx.lineWidth = state.size;
-  ctx.strokeStyle = state.color;
-  ctx.globalCompositeOperation = state.tool === 'pen' ? 'source-over' : 'destination-out';
-
-  const id = crypto.randomUUID ? crypto.randomUUID() : `p_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  const page = { id, canvas, ctx, dpr, history: [], future: [] };
+  const page = { id: crypto.randomUUID?.() || `p_${Date.now()}`, canvas, ctx, dpr: 1, history: [], future: [], cssW: 0, cssH: 0 };
   state.pages.push(page);
 
   bindDrawingEvents(page);
   addPageListItem(state.pages.length - 1);
 
-  // push a blank snapshot so first undo works
-  pushHistory(page, /*force*/true);
+  // initial layout + buffer sync
+  layoutPageToFit(page, /*preserve*/ false);
+  pushHistory(page, true); // baseline for undo
 
   return state.pages.length - 1;
 }
@@ -254,16 +239,19 @@ function selectPage(index){
   });
   state.activeIndex = index;
   setTool(state.tool);
+
   const page = getActivePage();
-  if (page) {
+  if (page){
     page.ctx.lineWidth = state.size;
     page.ctx.strokeStyle = state.color;
+    layoutPageToFit(page, /*preserve*/ true);
+    updateUndoRedoButtons();
   }
 }
 
 function getActivePage(){ return state.pages[state.activeIndex] || null; }
 
-// ---------- drawing + history ----------
+// ---------- Drawing + History ----------
 function bindDrawingEvents(page){
   const c = page.canvas;
 
@@ -271,33 +259,29 @@ function bindDrawingEvents(page){
     e.preventDefault();
     c.setPointerCapture?.(e.pointerId);
     state.drawing = true;
-    const pt = relativePoint(c, e);
-    state.last = pt;
+    const pt = relPoint(c, e);
     page.ctx.beginPath();
     page.ctx.moveTo(pt.x, pt.y);
-    // snapshot BEFORE drawing so undo returns to this state
-    pushHistory(page);
+    pushHistory(page); // snapshot BEFORE drawing
   };
 
   const onMove = (e) => {
     if (!state.drawing) return;
-    const pt = relativePoint(c, e);
+    const pt = relPoint(c, e);
     page.ctx.lineWidth = state.size;
     if (state.tool === 'pen') page.ctx.strokeStyle = state.color;
     page.ctx.lineTo(pt.x, pt.y);
     page.ctx.stroke();
-    state.last = pt;
   };
 
   const endStroke = (e) => {
     if (!state.drawing) return;
-    const pt = relativePoint(c, e);
+    const pt = relPoint(c, e);
     page.ctx.lineTo(pt.x, pt.y);
     page.ctx.stroke();
     page.ctx.closePath();
     state.drawing = false;
     c.releasePointerCapture?.(e.pointerId);
-    // (no snapshot here—already captured at pointerdown)
   };
 
   c.addEventListener('pointerdown', onDown);
@@ -307,7 +291,7 @@ function bindDrawingEvents(page){
   c.addEventListener('pointerleave', endStroke);
 }
 
-function relativePoint(canvas, e){
+function relPoint(canvas, e){
   const r = canvas.getBoundingClientRect();
   return { x: e.clientX - r.left, y: e.clientY - r.top };
 }
@@ -321,37 +305,31 @@ function clearActivePage(){
   ctx.restore();
 }
 
-// snapshot current bitmap into history (ImageData)
 function pushHistory(page, force=false){
-  // when starting a new stroke, we snapshot before drawing
-  const { canvas, history, future } = page;
+  const { canvas, history } = page;
   const ctx = canvas.getContext('2d');
   ctx.save(); ctx.setTransform(1,0,0,1,0,0);
   const snap = ctx.getImageData(0,0,canvas.width, canvas.height);
   ctx.restore();
   history.push(snap);
-  // drop redo stack on new action
   if (!force) page.future = [];
-  // cap memory
   if (history.length > state.maxHistory) history.shift();
   updateUndoRedoButtons();
 }
 
 function undo(){
   const page = getActivePage();
-  if (!page) return;
-  if (page.history.length === 0) return;
-  // current state -> future, and restore the last snapshot
-  const { canvas, ctx, history, future } = page;
+  if (!page || page.history.length === 0) return;
 
-  // Save current bitmap to redo stack
+  // push current to future
+  const { canvas, ctx, history, future } = page;
   ctx.save(); ctx.setTransform(1,0,0,1,0,0);
   const current = ctx.getImageData(0,0,canvas.width, canvas.height);
   ctx.restore();
   future.push(current);
   if (future.length > state.maxHistory) future.shift();
 
-  // Pop last snapshot to restore
+  // restore from history
   const snap = history.pop();
   ctx.save(); ctx.setTransform(1,0,0,1,0,0);
   ctx.putImageData(snap, 0, 0);
@@ -362,10 +340,9 @@ function undo(){
 
 function redo(){
   const page = getActivePage();
-  if (!page) return;
-  if (page.future.length === 0) return;
-  const { canvas, ctx, history, future } = page;
+  if (!page || page.future.length === 0) return;
 
+  const { canvas, ctx, history, future } = page;
   // push current to history
   ctx.save(); ctx.setTransform(1,0,0,1,0,0);
   const current = ctx.getImageData(0,0,canvas.width, canvas.height);
@@ -389,7 +366,7 @@ function updateUndoRedoButtons(){
   UI.redoBtn.disabled = page.future.length === 0;
 }
 
-// ---------- save/load ----------
+// ---------- Save/Load/Export ----------
 function pageToBlobOpaque(page){
   return new Promise(resolve => {
     const temp = document.createElement('canvas');
@@ -404,7 +381,7 @@ function pageToBlobOpaque(page){
 }
 
 async function restoreFromRecord(rec){
-  // wipe current pages
+  // wipe
   state.pages.forEach(p => p.canvas.remove());
   state.pages = [];
   UI.pagesList.innerHTML = '';
@@ -414,10 +391,9 @@ async function restoreFromRecord(rec){
     const page = state.pages[idx];
     const blob = arrayBufferToBlob(rec.pages[i], 'image/png');
     await drawBlobOnCanvas(blob, page.canvas);
-    // reset history stacks after drawing restored bitmap
-    page.history = [];
-    page.future = [];
-    pushHistory(page, /*force*/true); // snapshot base so undo works
+    page.history = []; page.future = [];
+    pushHistory(page, true);
+    layoutPageToFit(page, true);
   }
   selectPage(0);
 }
@@ -437,12 +413,9 @@ function drawBlobOnCanvas(blob, canvas){
   });
 }
 
-// ---------- export (PNG current page) ----------
 async function exportActivePNG(){
   const page = getActivePage();
   if (!page) return;
-
-  // opaque white background under strokes
   const temp = document.createElement('canvas');
   temp.width = page.canvas.width;
   temp.height = page.canvas.height;
@@ -459,14 +432,14 @@ async function exportActivePNG(){
   URL.revokeObjectURL?.(url);
 }
 
-// ---------- colour wheel ----------
+// ---------- Colour wheel ----------
 let wheelPicking = false;
 
 function drawColourWheel(canvas){
   const ctx = canvas.getContext('2d');
   const { width, height } = canvas;
   const cx = width/2, cy = height/2;
-  const radius = Math.min(cx, cy) - 2;
+  const radius = Math.min(cx, cy) - 1;
 
   const img = ctx.createImageData(width, height);
   for (let y = 0; y < height; y++){
@@ -479,8 +452,7 @@ function drawColourWheel(canvas){
         const angle = Math.atan2(dy, dx);
         const hue = ((angle * 180 / Math.PI) + 360) % 360;
         const t = Math.min(1, dist / radius);
-        const s = 1;
-        const l = 0.5 + (t-0.5)*0.6;
+        const s = 1, l = 0.5 + (t-0.5)*0.6;
         const { r, g, b } = hslToRgb(hue/360, s, l);
         img.data[i+0] = r; img.data[i+1] = g; img.data[i+2] = b; img.data[i+3] = 255;
       } else {
@@ -516,7 +488,7 @@ function setPenColor(cssColor){
 function trySetStrokeStyle(cssColor){
   const test = document.createElement('canvas').getContext('2d');
   try {
-    test.strokeStyle = cssColor; // throws for invalid colors
+    test.strokeStyle = cssColor; // throws on invalid
     state.color = cssColor;
     const page = getActivePage();
     if (page && state.tool === 'pen') page.ctx.strokeStyle = state.color;
@@ -529,7 +501,7 @@ function updateSwatch(color){
   UI.currentSwatch.style.background = color;
 }
 
-// helpers: color conversions
+// color helpers
 function hslToRgb(h, s, l){
   if (s === 0) { const v = Math.round(l*255); return { r:v, g:v, b:v }; }
   const q = l < 0.5 ? l*(1+s) : l + s - l*s;
@@ -547,9 +519,94 @@ function hue2rgb(p,q,t){ if (t<0) t+=1; if (t>1) t-=1;
 }
 function rgbToHex(r,g,b){ const h=n=>n.toString(16).padStart(2,'0'); return `#${h(r)}${h(g)}${h(b)}`; }
 
-// ---------- UI sugar ----------
+// ---------- Auto-fit layout ----------
+function addResizeObservers(){
+  // Recompute layout on viewport or stage changes
+  const ro = new ResizeObserver(() => layoutActivePage(true));
+  ro.observe(UI.pageStage);
+  window.addEventListener('orientationchange', () => layoutActivePage(true));
+  window.addEventListener('resize', () => layoutActivePage(true));
+}
+
+function layoutActivePage(preserve=true){
+  const page = getActivePage();
+  if (!page) return;
+  layoutPageToFit(page, preserve);
+}
+
+function layoutPageToFit(page, preserve=true){
+  // Determine available size inside stage (minus a tiny padding)
+  const stageRect = UI.pageStage.getBoundingClientRect();
+  const availW = Math.max(100, stageRect.width - 16);
+  const availH = Math.max(100, stageRect.height - 16);
+
+  // Fit portrait A5 rectangle
+  let targetW = availW;
+  let targetH = targetW / A5_ASPECT;
+  if (targetH > availH) {
+    targetH = availH;
+    targetW = targetH * A5_ASPECT;
+  }
+
+  // Apply CSS display size (in px)
+  page.canvas.style.width = `${Math.floor(targetW)}px`;
+  page.canvas.style.height = `${Math.floor(targetH)}px`;
+
+  // Sync pixel buffer to CSS size and DPR, optionally preserving content
+  syncBufferToDisplay(page, preserve);
+}
+
+function syncBufferToDisplay(page, preserveContent){
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  const cssW = Math.floor(parseFloat(page.canvas.style.width));
+  const cssH = Math.floor(parseFloat(page.canvas.style.height));
+
+  const needsResize =
+    page.canvas.width !== Math.round(cssW * dpr) ||
+    page.canvas.height !== Math.round(cssH * dpr) ||
+    page.dpr !== dpr;
+
+  if (!needsResize) return;
+
+  let snapshot = null;
+  if (preserveContent) {
+    // snapshot CURRENT bitmap before changing buffer
+    page.ctx.save(); page.ctx.setTransform(1,0,0,1,0,0);
+    snapshot = page.ctx.getImageData(0,0,page.canvas.width, page.canvas.height);
+    page.ctx.restore();
+  }
+
+  page.dpr = dpr;
+  page.canvas.width = Math.round(cssW * dpr);
+  page.canvas.height = Math.round(cssH * dpr);
+  page.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  page.ctx.lineJoin = 'round';
+  page.ctx.lineCap  = 'round';
+  page.ctx.lineWidth = state.size;
+  page.ctx.strokeStyle = state.color;
+  page.ctx.globalCompositeOperation = state.tool === 'pen' ? 'source-over' : 'destination-out';
+
+  if (snapshot){
+    // redraw snapshot scaled to new buffer size
+    const temp = document.createElement('canvas');
+    temp.width = snapshot.width; temp.height = snapshot.height;
+    const tctx = temp.getContext('2d');
+    tctx.putImageData(snapshot, 0, 0);
+
+    // draw scaled into new buffer
+    page.ctx.save(); page.ctx.setTransform(1,0,0,1,0,0);
+    page.ctx.drawImage(temp, 0, 0, page.canvas.width, page.canvas.height);
+    page.ctx.restore();
+  }
+
+  page.cssW = cssW; page.cssH = cssH;
+  updateUndoRedoButtons();
+}
+
+// ---------- UX sugar ----------
 function pulse(btn, text){
   const old = btn.textContent;
   btn.textContent = text;
   setTimeout(()=>btn.textContent = old, 900);
 }
+
