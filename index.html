@@ -40,9 +40,10 @@
     <div class="tool-group wrap">
       <input id="sessionName" class="hex" placeholder="session name (e.g. classA-01)" value="default" />
       <button id="addPageBtn" class="btn" title="Add A5 page (N)">➕ Add Page</button>
-      <button id="saveBtn" class="btn" title="Save pages to this session (S)">💾 Save</button>
-      <button id="loadBtn" class="btn" title="Load this session (L)">📂 Load</button>
+      <button id="saveBtn" class="btn" title="Save pages (S)">💾 Save</button>
+      <button id="loadBtn" class="btn" title="Load session (L)">📂 Load</button>
       <button id="exportBtn" class="btn" title="Export current page as PNG (D)">🖼️ Export PNG</button>
+      <button id="fullscreenBtn" class="btn" title="Toggle fullscreen (F)">⛶ Fullscreen</button>
     </div>
   </header>
 
@@ -50,15 +51,13 @@
     <aside class="sidebar" aria-label="Pages">
       <div class="pages-header">
         <h2>Pages</h2>
-        <small class="muted">A5 portrait • Auto-fit</small>
+        <small class="muted">A5 • Auto-fit</small>
       </div>
       <ol id="pagesList" class="pages-list" role="tablist" aria-orientation="vertical"></ol>
     </aside>
 
     <section class="stage" aria-live="polite">
-      <div id="pageStage" class="page-stage">
-        <!-- canvases injected here -->
-      </div>
+      <div id="pageStage" class="page-stage"></div>
     </section>
   </main>
 
@@ -68,6 +67,7 @@
       <strong>N</strong>=add page, <strong>C</strong>=clear,
       <strong>S</strong>=save, <strong>L</strong>=load,
       <strong>D</strong>=export PNG,
+      <strong>F</strong>=fullscreen,
       <strong>Undo</strong>=Ctrl/Cmd+Z, <strong>Redo</strong>=Ctrl/Cmd+Shift+Z or Ctrl+Y.
       Sessions are saved privately in IndexedDB on this device.
     </small>
