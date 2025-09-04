@@ -5,9 +5,9 @@
   --muted:#8b90a3;
   --brand:#6aa3ff;
   --accent:#65d7c1;
-  --danger:#ff6a6a;
   --radius:14px;
   --shadow:0 8px 30px rgba(0,0,0,.35);
+  --swatch: #111111;
 }
 
 *{ box-sizing:border-box; }
@@ -28,6 +28,7 @@ html,body{
   background:var(--panel);
   position:sticky; top:0; z-index:5;
   box-shadow:var(--shadow);
+  flex-wrap:wrap;
 }
 
 .tool-group{
@@ -93,29 +94,57 @@ html,body{
   min-height:70vh;
 }
 
-/* The page-stage holds one visible canvas at a time */
 .page-stage{
   display:grid; place-items:center;
 }
 
-/* Each page canvas is A5 portrait. We use physical units so print/export respects A5. */
 .page-canvas{
   width:148mm;
   height:210mm;
   background:#fff;
   border-radius:12px;
   box-shadow:0 10px 30px rgba(0,0,0,.45);
-  touch-action:none; /* important: prevent touch scrolling while drawing */
-  display:none; /* only active is shown */
+  touch-action:none;
+  display:none;
 }
 .page-canvas.active{ display:block; }
 
-/* Footer */
 .footer{
   color:var(--muted);
   padding:12px 16px; text-align:center;
   border-top:1px solid rgba(255,255,255,.06);
 }
 
-/* Print: force A5 pages if you ever print the canvas element */
+/* Colour wheel group */
+.color-group{
+  gap:12px;
+}
+#colorWheel{
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.06);
+  background:#0f1117;
+  touch-action:none;
+}
+.swatch-column{
+  display:flex; flex-direction:column; gap:8px;
+}
+.swatch-row{
+  display:flex; align-items:center; gap:8px;
+}
+.hex{
+  width:130px;
+  padding:6px 8px;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,.08);
+  background:#0f131d;
+  color:var(--ink);
+  font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+.swatch{
+  width:130px; height:28px; border-radius:8px;
+  border:1px solid rgba(255,255,255,.08);
+  background:var(--swatch);
+}
+
+/* Print */
 @page { size: A5 portrait; margin: 10mm; }
