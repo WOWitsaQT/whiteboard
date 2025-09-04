@@ -128,7 +128,7 @@ function wireUI(){
     const name = UI.sessionName.value.trim();
     const blobs = await Promise.all(state.pages.map(pageToBlobOpaque));
     await saveSession(name, blobs);
-    pulse(UI.saveBtn, '✅ Saved');
+    pulse(UI.saveBtn, 'Saved');
   });
 
   UI.loadBtn.addEventListener('click', async () => {
@@ -136,9 +136,9 @@ function wireUI(){
     const rec = await loadSession(name);
     if (rec) {
       await restoreFromRecord(rec);
-      pulse(UI.loadBtn, '📂 Loaded');
+      pulse(UI.loadBtn, 'Loaded');
     } else {
-      pulse(UI.loadBtn, '⚠️ Not found');
+      pulse(UI.loadBtn, 'Not found');
     }
   });
 
