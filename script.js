@@ -1,18 +1,7 @@
-/* 
-  A5 Whiteboard Survey (Mobile Auto-Fit)
-  – Keeps A5 aspect ratio, scales to fit any screen
-  – Resizes pixel buffer on demand WITHOUT losing current drawing
-  – All previous features: undo/redo, colour wheel, named sessions, save/load, export PNG
+// === A5 Whiteboard Survey (Fit-to-Screen + Fullscreen) ===
+// Keeps A5 aspect, scales to stage; page itself fills 100dvh (no outer scroll)
 
-  Fit strategy:
-  - Determine the inner size of the stage.
-  - Compute the largest A5 portrait rectangle that fits (aspect = 148/210).
-  - Set canvas CSS size to that rectangle.
-  - If CSS size or DPR changed, snapshot -> resize pixel buffer -> redraw.
-*/
-
-const A5 = { w: 148, h: 210 };                 // mm proportions only (for aspect)
-const A5_ASPECT = A5.w / A5.h;                 // ~0.7047619
+const A5_ASPECT = 148 / 210;
 
 // UI refs
 const UI = {
@@ -33,13 +22,14 @@ const UI = {
   undoBtn: document.getElementById('undoBtn'),
   redoBtn: document.getElementById('redoBtn'),
   sessionName: document.getElementById('sessionName'),
+  fullscreenBtn: document.getElementById('fullscreenBtn'),
 };
 
 let state = {
   tool: 'pen',
   size: parseInt(UI.size.value, 10),
   color: '#111111',
-  pages: [],              // { id, canvas, ctx, dpr, history:[], future:[], cssW: number, cssH: number }
+  pages: [], // { id, canvas, ctx, dpr, history:[], future:[] }
   activeIndex: -1,
   drawing: false,
   maxHistory: 40
@@ -121,7 +111,7 @@ function wireUI(){
 
   UI.clearBtn.addEventListener('click', () => {
     clearActivePage();
-    pushHistory(getActivePage()); // snapshot after clear so you can undo the clear
+    pushHistory(getActivePage());
   });
 
   UI.saveBtn.addEventListener('click', async () => {
@@ -134,12 +124,8 @@ function wireUI(){
   UI.loadBtn.addEventListener('click', async () => {
     const name = UI.sessionName.value.trim();
     const rec = await loadSession(name);
-    if (rec) {
-      await restoreFromRecord(rec);
-      pulse(UI.loadBtn, '📂 Loaded');
-    } else {
-      pulse(UI.loadBtn, '⚠️ Not found');
-    }
+    if (rec) { await restoreFromRecord(rec); pulse(UI.loadBtn, '📂 Loaded'); }
+    else { pulse(UI.loadBtn, '⚠️ Not found'); }
   });
 
   UI.exportBtn.addEventListener('click', exportActivePNG);
@@ -160,6 +146,13 @@ function wireUI(){
   // Undo/Redo buttons
   UI.undoBtn.addEventListener('click', undo);
   UI.redoBtn.addEventListener('click', redo);
+
+  // Fullscreen
+  UI.fullscreenBtn.addEventListener('click', toggleFullscreen);
+  document.addEventListener('fullscreenchange', () => {
+    UI.fullscreenBtn.textContent = document.fullscreenElement ? '🗗 Exit Fullscreen' : '⛶ Fullscreen';
+    layoutActivePage(true);
+  });
 }
 
 function wireKeyboard(){
@@ -180,6 +173,7 @@ function wireKeyboard(){
     if (k === 's') UI.saveBtn.click();
     if (k === 'l') UI.loadBtn.click();
     if (k === 'd') UI.exportBtn.click();
+    if (k === 'f') UI.fullscreenBtn.click();
   });
 }
 
@@ -206,15 +200,14 @@ function makePage(){
   UI.pageStage.appendChild(canvas);
 
   const ctx = canvas.getContext('2d');
-  const page = { id: crypto.randomUUID?.() || `p_${Date.now()}`, canvas, ctx, dpr: 1, history: [], future: [], cssW: 0, cssH: 0 };
+  const page = { id: crypto.randomUUID?.() || `p_${Date.now()}`, canvas, ctx, dpr: 1, history: [], future: [] };
   state.pages.push(page);
 
   bindDrawingEvents(page);
   addPageListItem(state.pages.length - 1);
 
-  // initial layout + buffer sync
-  layoutPageToFit(page, /*preserve*/ false);
-  pushHistory(page, true); // baseline for undo
+  layoutPageToFit(page, false);
+  pushHistory(page, true);
 
   return state.pages.length - 1;
 }
@@ -244,7 +237,7 @@ function selectPage(index){
   if (page){
     page.ctx.lineWidth = state.size;
     page.ctx.strokeStyle = state.color;
-    layoutPageToFit(page, /*preserve*/ true);
+    layoutPageToFit(page, true);
     updateUndoRedoButtons();
   }
 }
@@ -321,7 +314,6 @@ function undo(){
   const page = getActivePage();
   if (!page || page.history.length === 0) return;
 
-  // push current to future
   const { canvas, ctx, history, future } = page;
   ctx.save(); ctx.setTransform(1,0,0,1,0,0);
   const current = ctx.getImageData(0,0,canvas.width, canvas.height);
@@ -329,7 +321,6 @@ function undo(){
   future.push(current);
   if (future.length > state.maxHistory) future.shift();
 
-  // restore from history
   const snap = history.pop();
   ctx.save(); ctx.setTransform(1,0,0,1,0,0);
   ctx.putImageData(snap, 0, 0);
@@ -343,14 +334,12 @@ function redo(){
   if (!page || page.future.length === 0) return;
 
   const { canvas, ctx, history, future } = page;
-  // push current to history
   ctx.save(); ctx.setTransform(1,0,0,1,0,0);
   const current = ctx.getImageData(0,0,canvas.width, canvas.height);
   ctx.restore();
   history.push(current);
   if (history.length > state.maxHistory) history.shift();
 
-  // restore from future
   const snap = future.pop();
   ctx.save(); ctx.setTransform(1,0,0,1,0,0);
   ctx.putImageData(snap, 0, 0);
@@ -381,7 +370,6 @@ function pageToBlobOpaque(page){
 }
 
 async function restoreFromRecord(rec){
-  // wipe
   state.pages.forEach(p => p.canvas.remove());
   state.pages = [];
   UI.pagesList.innerHTML = '';
@@ -434,74 +422,62 @@ async function exportActivePNG(){
 
 // ---------- Colour wheel ----------
 let wheelPicking = false;
-
 function drawColourWheel(canvas){
   const ctx = canvas.getContext('2d');
   const { width, height } = canvas;
   const cx = width/2, cy = height/2;
   const radius = Math.min(cx, cy) - 1;
-
   const img = ctx.createImageData(width, height);
   for (let y = 0; y < height; y++){
     for (let x = 0; x < width; x++){
       const dx = x - cx, dy = y - cy;
       const dist = Math.sqrt(dx*dx + dy*dy);
       const i = (y * width + x) * 4;
-
       if (dist <= radius){
         const angle = Math.atan2(dy, dx);
         const hue = ((angle * 180 / Math.PI) + 360) % 360;
         const t = Math.min(1, dist / radius);
         const s = 1, l = 0.5 + (t-0.5)*0.6;
         const { r, g, b } = hslToRgb(hue/360, s, l);
-        img.data[i+0] = r; img.data[i+1] = g; img.data[i+2] = b; img.data[i+3] = 255;
-      } else {
-        img.data[i+3] = 0;
-      }
+        img.data[i] = r; img.data[i+1] = g; img.data[i+2] = b; img.data[i+3] = 255;
+      } else { img.data[i+3] = 0; }
     }
   }
   ctx.putImageData(img, 0, 0);
 }
-
 function onWheelPickStart(e){ wheelPicking = true; pickColorFromWheel(e); }
 function onWheelPickMove(e){ if (wheelPicking) pickColorFromWheel(e); }
 function onWheelPickEnd(){ wheelPicking = false; }
-
 function pickColorFromWheel(e){
   const rect = UI.colorWheel.getBoundingClientRect();
   const x = Math.floor(e.clientX - rect.left);
   const y = Math.floor(e.clientY - rect.top);
   const ctx = UI.colorWheel.getContext('2d');
-  const data = ctx.getImageData(x, y, 1, 1).data;
-  if (data[3] === 0) return;
-  const hex = rgbToHex(data[0], data[1], data[2]);
+  const d = ctx.getImageData(x, y, 1, 1).data;
+  if (d[3] === 0) return;
+  const hex = rgbToHex(d[0], d[1], d[2]);
   setPenColor(hex);
 }
-
 function setPenColor(cssColor){
   if (!trySetStrokeStyle(cssColor)) return false;
   updateSwatch(state.color);
   UI.colorHex.value = state.color;
   return true;
 }
-
 function trySetStrokeStyle(cssColor){
   const test = document.createElement('canvas').getContext('2d');
   try {
-    test.strokeStyle = cssColor; // throws on invalid
+    test.strokeStyle = cssColor;
     state.color = cssColor;
     const page = getActivePage();
     if (page && state.tool === 'pen') page.ctx.strokeStyle = state.color;
     return true;
   } catch { return false; }
 }
-
 function updateSwatch(color){
   UI.currentSwatch.style.setProperty('--swatch', color);
   UI.currentSwatch.style.background = color;
 }
-
-// color helpers
 function hslToRgb(h, s, l){
   if (s === 0) { const v = Math.round(l*255); return { r:v, g:v, b:v }; }
   const q = l < 0.5 ? l*(1+s) : l + s - l*s;
@@ -519,28 +495,23 @@ function hue2rgb(p,q,t){ if (t<0) t+=1; if (t>1) t-=1;
 }
 function rgbToHex(r,g,b){ const h=n=>n.toString(16).padStart(2,'0'); return `#${h(r)}${h(g)}${h(b)}`; }
 
-// ---------- Auto-fit layout ----------
+// ---------- Fit-to-screen & buffer sync ----------
 function addResizeObservers(){
-  // Recompute layout on viewport or stage changes
   const ro = new ResizeObserver(() => layoutActivePage(true));
   ro.observe(UI.pageStage);
   window.addEventListener('orientationchange', () => layoutActivePage(true));
   window.addEventListener('resize', () => layoutActivePage(true));
 }
-
 function layoutActivePage(preserve=true){
   const page = getActivePage();
   if (!page) return;
   layoutPageToFit(page, preserve);
 }
-
 function layoutPageToFit(page, preserve=true){
-  // Determine available size inside stage (minus a tiny padding)
-  const stageRect = UI.pageStage.getBoundingClientRect();
-  const availW = Math.max(100, stageRect.width - 16);
-  const availH = Math.max(100, stageRect.height - 16);
+  const rect = UI.pageStage.getBoundingClientRect();
+  const availW = Math.max(100, rect.width - 16);
+  const availH = Math.max(100, rect.height - 16);
 
-  // Fit portrait A5 rectangle
   let targetW = availW;
   let targetH = targetW / A5_ASPECT;
   if (targetH > availH) {
@@ -548,31 +519,26 @@ function layoutPageToFit(page, preserve=true){
     targetW = targetH * A5_ASPECT;
   }
 
-  // Apply CSS display size (in px)
   page.canvas.style.width = `${Math.floor(targetW)}px`;
   page.canvas.style.height = `${Math.floor(targetH)}px`;
 
-  // Sync pixel buffer to CSS size and DPR, optionally preserving content
   syncBufferToDisplay(page, preserve);
 }
-
 function syncBufferToDisplay(page, preserveContent){
   const dpr = Math.max(1, window.devicePixelRatio || 1);
   const cssW = Math.floor(parseFloat(page.canvas.style.width));
   const cssH = Math.floor(parseFloat(page.canvas.style.height));
-
-  const needsResize =
+  const need =
     page.canvas.width !== Math.round(cssW * dpr) ||
     page.canvas.height !== Math.round(cssH * dpr) ||
     page.dpr !== dpr;
 
-  if (!needsResize) return;
+  if (!need) return;
 
-  let snapshot = null;
-  if (preserveContent) {
-    // snapshot CURRENT bitmap before changing buffer
+  let snap = null;
+  if (preserveContent){
     page.ctx.save(); page.ctx.setTransform(1,0,0,1,0,0);
-    snapshot = page.ctx.getImageData(0,0,page.canvas.width, page.canvas.height);
+    snap = page.ctx.getImageData(0,0,page.canvas.width, page.canvas.height);
     page.ctx.restore();
   }
 
@@ -586,27 +552,32 @@ function syncBufferToDisplay(page, preserveContent){
   page.ctx.strokeStyle = state.color;
   page.ctx.globalCompositeOperation = state.tool === 'pen' ? 'source-over' : 'destination-out';
 
-  if (snapshot){
-    // redraw snapshot scaled to new buffer size
+  if (snap){
     const temp = document.createElement('canvas');
-    temp.width = snapshot.width; temp.height = snapshot.height;
+    temp.width = snap.width; temp.height = snap.height;
     const tctx = temp.getContext('2d');
-    tctx.putImageData(snapshot, 0, 0);
-
-    // draw scaled into new buffer
+    tctx.putImageData(snap, 0, 0);
     page.ctx.save(); page.ctx.setTransform(1,0,0,1,0,0);
     page.ctx.drawImage(temp, 0, 0, page.canvas.width, page.canvas.height);
     page.ctx.restore();
   }
-
-  page.cssW = cssW; page.cssH = cssH;
   updateUndoRedoButtons();
 }
 
-// ---------- UX sugar ----------
+// ---------- Fullscreen ----------
+function toggleFullscreen(){
+  if (!document.fullscreenElement) {
+    (document.documentElement.requestFullscreen?.bind(document.documentElement) ||
+     document.body.requestFullscreen?.bind(document.body) ||
+     (()=>{}))();
+  } else {
+    document.exitFullscreen?.();
+  }
+}
+
+// ---------- UI sugar ----------
 function pulse(btn, text){
   const old = btn.textContent;
   btn.textContent = text;
   setTimeout(()=>btn.textContent = old, 900);
 }
-
