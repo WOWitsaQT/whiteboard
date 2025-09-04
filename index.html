@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>A5 Whiteboard Survey</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <header class="toolbar" role="toolbar" aria-label="Drawing toolbar">
+    <div class="tool-group">
+      <button id="penBtn" class="btn active" data-tool="pen" aria-pressed="true" title="Pen (P)">✏️ Pen</button>
+      <button id="eraserBtn" class="btn" data-tool="eraser" aria-pressed="false" title="Eraser (E)">🩹 Eraser</button>
+    </div>
+
+    <div class="tool-group">
+      <label for="size" class="label">Size</label>
+      <input id="size" type="range" min="1" max="60" value="8" />
+      <span id="sizeValue" class="mono">8 px</span>
+    </div>
+
+    <div class="tool-group">
+      <button id="addPageBtn" class="btn" title="Add A5 page (N)">➕ Add Page</button>
+      <button id="clearBtn" class="btn" title="Clear current page (C)">🧹 Clear</button>
+      <button id="downloadBtn" class="btn" title="Download current page as PNG (D)">⬇️ Download</button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="sidebar" aria-label="Pages">
+      <div class="pages-header">
+        <h2>Pages</h2>
+        <small class="muted">A5 portrait</small>
+      </div>
+      <ol id="pagesList" class="pages-list" role="tablist" aria-orientation="vertical"></ol>
+    </aside>
+
+    <section class="stage" aria-live="polite">
+      <!-- canvases (one per page) get injected here -->
+      <div id="pageStage" class="page-stage"></div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <small>Tip: Press <strong>P</strong> (pen), <strong>E</strong> (eraser), <strong>N</strong> (add page), <strong>C</strong> (clear), <strong>D</strong> (download).</small>
+  </footer>
+
+  <!-- Keep JS last -->
+  <script src="./script.js"></script>
+</body>
+</html>
