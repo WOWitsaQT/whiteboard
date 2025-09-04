@@ -32,10 +32,17 @@
     </div>
 
     <div class="tool-group">
-      <button id="addPageBtn" class="btn" title="Add A5 page (N)">➕ Add Page</button>
+      <button id="undoBtn" class="btn" title="Undo (Ctrl/Cmd+Z)">↩️ Undo</button>
+      <button id="redoBtn" class="btn" title="Redo (Ctrl/Cmd+Shift+Z / Ctrl+Y)">↪️ Redo</button>
       <button id="clearBtn" class="btn" title="Clear current page (C)">🧹 Clear</button>
-      <button id="saveBtn" class="btn" title="Save all pages locally (S)">💾 Save</button>
-      <button id="loadBtn" class="btn" title="Load last saved session (L)">📂 Load</button>
+    </div>
+
+    <div class="tool-group">
+      <input id="sessionName" class="hex" placeholder="session name (e.g. classA-01)" value="default" />
+      <button id="addPageBtn" class="btn" title="Add A5 page (N)">➕ Add Page</button>
+      <button id="saveBtn" class="btn" title="Save pages to this session (S)">💾 Save</button>
+      <button id="loadBtn" class="btn" title="Load this session (L)">📂 Load</button>
+      <button id="exportBtn" class="btn" title="Export current page as PNG (D)">🖼️ Export PNG</button>
     </div>
   </header>
 
@@ -55,9 +62,12 @@
 
   <footer class="footer">
     <small>
-      Keys: <strong>P</strong>=pen, <strong>E</strong>=eraser, <strong>[</strong>/<strong>]</strong>=size, 
-      <strong>N</strong>=add page, <strong>C</strong>=clear, <strong>S</strong>=save, <strong>L</strong>=load.
-      Saved data stays on <em>this</em> device (IndexedDB).
+      Keys: <strong>P</strong>=pen, <strong>E</strong>=eraser, <strong>[</strong>/<strong>]</strong>=size,
+      <strong>N</strong>=add page, <strong>C</strong>=clear,
+      <strong>S</strong>=save, <strong>L</strong>=load,
+      <strong>D</strong>=export PNG,
+      <strong>Undo</strong>=Ctrl/Cmd+Z, <strong>Redo</strong>=Ctrl/Cmd+Shift+Z or Ctrl+Y.
+      Sessions are saved privately in IndexedDB on this device.
     </small>
   </footer>
 
