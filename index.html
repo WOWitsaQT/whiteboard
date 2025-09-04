@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Whiteboard</title>
+  <title>A5 Whiteboard Survey</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="./style.css" />
 </head>
@@ -19,10 +19,23 @@
       <span id="sizeValue" class="mono">8 px</span>
     </div>
 
+    <!-- Colour controls -->
+    <div class="tool-group color-group">
+      <canvas id="colorWheel" width="140" height="140" aria-label="Colour wheel picker"></canvas>
+      <div class="swatch-column">
+        <div class="swatch-row">
+          <span class="label">Colour</span>
+          <input id="colorHex" type="text" value="#111111" class="hex" maxlength="9" title="Hex or CSS color (e.g. #ff00aa or rgba(0,0,0,.7))" />
+        </div>
+        <div class="swatch" id="currentSwatch" title="Current pen colour"></div>
+      </div>
+    </div>
+
     <div class="tool-group">
       <button id="addPageBtn" class="btn" title="Add A5 page (N)">➕ Add Page</button>
       <button id="clearBtn" class="btn" title="Clear current page (C)">🧹 Clear</button>
-      <button id="downloadBtn" class="btn" title="Download current page as PNG (D)">⬇️ Download</button>
+      <button id="saveBtn" class="btn" title="Save all pages locally (S)">💾 Save</button>
+      <button id="loadBtn" class="btn" title="Load last saved session (L)">📂 Load</button>
     </div>
   </header>
 
@@ -36,16 +49,18 @@
     </aside>
 
     <section class="stage" aria-live="polite">
-      <!-- canvases (one per page) get injected here -->
       <div id="pageStage" class="page-stage"></div>
     </section>
   </main>
 
   <footer class="footer">
-    <small>Tip: Press <strong>P</strong> (pen), <strong>E</strong> (eraser), <strong>N</strong> (add page), <strong>C</strong> (clear), <strong>D</strong> (download).</small>
+    <small>
+      Keys: <strong>P</strong>=pen, <strong>E</strong>=eraser, <strong>[</strong>/<strong>]</strong>=size, 
+      <strong>N</strong>=add page, <strong>C</strong>=clear, <strong>S</strong>=save, <strong>L</strong>=load.
+      Saved data stays on <em>this</em> device (IndexedDB).
+    </small>
   </footer>
 
-  <!-- Keep JS last -->
   <script src="./script.js"></script>
 </body>
 </html>
