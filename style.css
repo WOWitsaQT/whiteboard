@@ -7,7 +7,7 @@
   --accent:#65d7c1;
   --radius:14px;
   --shadow:0 8px 30px rgba(0,0,0,.35);
-  --swatch: #111111;
+  --swatch:#111111;
 }
 
 *{ box-sizing:border-box; }
@@ -94,18 +94,13 @@ html,body{
   min-height:70vh;
 }
 
-.page-stage{
-  display:grid; place-items:center;
-}
+.page-stage{ display:grid; place-items:center; }
 
 .page-canvas{
-  width:148mm;
-  height:210mm;
-  background:#fff;
-  border-radius:12px;
+  width:148mm; height:210mm;
+  background:#fff; border-radius:12px;
   box-shadow:0 10px 30px rgba(0,0,0,.45);
-  touch-action:none;
-  display:none;
+  touch-action:none; display:none;
 }
 .page-canvas.active{ display:block; }
 
@@ -116,32 +111,22 @@ html,body{
 }
 
 /* Colour wheel group */
-.color-group{
-  gap:12px;
-}
+.color-group{ gap:12px; }
 #colorWheel{
   border-radius:999px;
   border:1px solid rgba(255,255,255,.06);
-  background:#0f1117;
-  touch-action:none;
+  background:#0f1117; touch-action:none;
 }
-.swatch-column{
-  display:flex; flex-direction:column; gap:8px;
-}
-.swatch-row{
-  display:flex; align-items:center; gap:8px;
-}
+.swatch-column{ display:flex; flex-direction:column; gap:8px; }
+.swatch-row{ display:flex; align-items:center; gap:8px; }
 .hex{
-  width:130px;
-  padding:6px 8px;
-  border-radius:8px;
+  width:180px; padding:6px 8px; border-radius:8px;
   border:1px solid rgba(255,255,255,.08);
-  background:#0f131d;
-  color:var(--ink);
+  background:#0f131d; color:var(--ink);
   font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 .swatch{
-  width:130px; height:28px; border-radius:8px;
+  width:180px; height:28px; border-radius:8px;
   border:1px solid rgba(255,255,255,.08);
   background:var(--swatch);
 }
