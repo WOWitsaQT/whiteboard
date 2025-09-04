@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>A5 Whiteboard Survey</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
@@ -21,7 +21,7 @@
 
     <!-- Colour controls -->
     <div class="tool-group color-group">
-      <canvas id="colorWheel" width="140" height="140" aria-label="Colour wheel picker"></canvas>
+      <canvas id="colorWheel" width="120" height="120" aria-label="Colour wheel picker"></canvas>
       <div class="swatch-column">
         <div class="swatch-row">
           <span class="label">Colour</span>
@@ -31,13 +31,13 @@
       </div>
     </div>
 
-    <div class="tool-group">
+    <div class="tool-group wrap">
       <button id="undoBtn" class="btn" title="Undo (Ctrl/Cmd+Z)">↩️ Undo</button>
       <button id="redoBtn" class="btn" title="Redo (Ctrl/Cmd+Shift+Z / Ctrl+Y)">↪️ Redo</button>
       <button id="clearBtn" class="btn" title="Clear current page (C)">🧹 Clear</button>
     </div>
 
-    <div class="tool-group">
+    <div class="tool-group wrap">
       <input id="sessionName" class="hex" placeholder="session name (e.g. classA-01)" value="default" />
       <button id="addPageBtn" class="btn" title="Add A5 page (N)">➕ Add Page</button>
       <button id="saveBtn" class="btn" title="Save pages to this session (S)">💾 Save</button>
@@ -50,13 +50,15 @@
     <aside class="sidebar" aria-label="Pages">
       <div class="pages-header">
         <h2>Pages</h2>
-        <small class="muted">A5 portrait</small>
+        <small class="muted">A5 portrait • Auto-fit</small>
       </div>
       <ol id="pagesList" class="pages-list" role="tablist" aria-orientation="vertical"></ol>
     </aside>
 
     <section class="stage" aria-live="polite">
-      <div id="pageStage" class="page-stage"></div>
+      <div id="pageStage" class="page-stage">
+        <!-- canvases injected here -->
+      </div>
     </section>
   </main>
 
