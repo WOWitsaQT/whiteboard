@@ -1,10 +1,4 @@
-// === A5 Whiteboard Survey (Compact-only, responsive UI) ===
-// - Single compact UI (no normal mode)
-// - Dock + corner tab scale via CSS clamp/dvh
-// - A5 canvas auto-fits and preserves strokes on resize/orientation
-// - Pen/Eraser, size, undo/redo, color, pages, add page
-// - Save/Load (IndexedDB private), Export PNG
-
+// === A5 Whiteboard Survey (Compact-only, dock has Clear button) ===
 const A5_ASPECT = 148 / 210;
 
 // ---------- UI references ----------
@@ -24,9 +18,6 @@ const UI = {
   dockNext: document.getElementById('dockNext'),
   dockPageLabel: document.getElementById('dockPageLabel'),
   dockAddPage: document.getElementById('dockAddPage'),
-  dockMenu: document.getElementById('dockMenu'),
-  dockMenuPanel: document.getElementById('dockMenuPanel'),
-  dockExport: document.getElementById('dockExport'),
   dockClear: document.getElementById('dockClear'),
 
   // Corner tab
@@ -128,14 +119,8 @@ function wireDock(){
   UI.dockNext.addEventListener('click', () => selectPage(Math.min(state.pages.length - 1, state.activeIndex + 1)));
   UI.dockAddPage.addEventListener('click', () => { const i = makePage(); selectPage(i); });
 
-  UI.dockMenu.addEventListener('click', () => UI.dockMenuPanel.hidden = !UI.dockMenuPanel.hidden);
-  UI.dockExport.addEventListener('click', exportActivePNG);
-  UI.dockClear.addEventListener('click', () => { clearActivePage(); pushHistory(getActivePage()); UI.dockMenuPanel.hidden = true; });
-
-  // close menu when tapping outside
-  document.addEventListener('pointerdown', (e) => {
-    if (!UI.dockMenuPanel.contains(e.target) && e.target !== UI.dockMenu) UI.dockMenuPanel.hidden = true;
-  });
+  // NEW: clear current page from the dock
+  UI.dockClear.addEventListener('click', () => { clearActivePage(); pushHistory(getActivePage()); });
 }
 
 function setBrushSize(px){
@@ -246,11 +231,7 @@ function selectPage(index){
   }
   updatePageLabel();
 }
-
-function updatePageLabel(){
-  UI.dockPageLabel.textContent = `${state.activeIndex + 1}/${state.pages.length}`;
-}
-
+function updatePageLabel(){ UI.dockPageLabel.textContent = `${state.activeIndex + 1}/${state.pages.length}`; }
 function getActivePage(){ return state.pages[state.activeIndex] || null; }
 
 // ---------- Drawing + History ----------
@@ -439,15 +420,10 @@ async function exportActivePNG(){
 }
 
 function flashCorner(text){
-  // tiny visual feedback by temporarily changing the toggle label
   const old = UI.cornerToggle.textContent;
   UI.cornerToggle.textContent = text;
   setTimeout(()=> UI.cornerToggle.textContent = old, 900);
 }
-
-// ---------- Colour wheel (we use native color input on dock) ----------
-// (No custom wheel needed here; keeping helpers for completeness)
-function rgbToHex(r,g,b){ const h=n=>n.toString(16).padStart(2,'0'); return `#${h(r)}${h(g)}${h(b)}`; }
 
 // ---------- Fit-to-screen ----------
 function addResizeObservers(){
@@ -467,8 +443,8 @@ function layoutPageToFit(page, preserve=true){
   const availH = Math.max(100, rect.height - 16);
 
   let targetW = availW;
-  let targetH = targetW / A5_ASPECT;
-  if (targetH > availH) { targetH = availH; targetW = targetH * A5_ASPECT; }
+  let targetH = targetW / (148/210);
+  if (targetH > availH) { targetH = availH; targetW = targetH * (148/210); }
 
   page.canvas.style.width = `${Math.floor(targetW)}px`;
   page.canvas.style.height = `${Math.floor(targetH)}px`;
@@ -508,6 +484,3 @@ function syncBufferToDisplay(page, preserveContent){
   }
   updateUndoRedoButtons();
 }
-
-// ---------- Helpers ----------
-function getActivePage(){ return state.pages[state.activeIndex] || null; }
