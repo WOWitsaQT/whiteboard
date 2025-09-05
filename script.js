@@ -1,5 +1,4 @@
-// === A5 Whiteboard Survey (Fit-to-Screen + Fullscreen) ===
-// Keeps A5 aspect, scales to stage; page itself fills 100dvh (no outer scroll)
+// === A5 Whiteboard Survey (Compact/Zen Mode for Mobile) ===
 
 const A5_ASPECT = 148 / 210;
 
@@ -23,6 +22,23 @@ const UI = {
   redoBtn: document.getElementById('redoBtn'),
   sessionName: document.getElementById('sessionName'),
   fullscreenBtn: document.getElementById('fullscreenBtn'),
+  compactBtn: document.getElementById('compactBtn'),
+
+  // Dock
+  mobileDock: document.getElementById('mobileDock'),
+  dockPen: document.getElementById('dockPen'),
+  dockEraser: document.getElementById('dockEraser'),
+  dockSizeMinus: document.getElementById('dockSizeMinus'),
+  dockSizePlus: document.getElementById('dockSizePlus'),
+  dockColor: document.getElementById('dockColor'),
+  dockPrev: document.getElementById('dockPrev'),
+  dockNext: document.getElementById('dockNext'),
+  dockMenu: document.getElementById('dockMenu'),
+  dockMenuPanel: document.getElementById('dockMenuPanel'),
+  dockSave: document.getElementById('dockSave'),
+  dockLoad: document.getElementById('dockLoad'),
+  dockExport: document.getElementById('dockExport'),
+  dockExit: document.getElementById('dockExit'),
 };
 
 let state = {
@@ -32,10 +48,11 @@ let state = {
   pages: [], // { id, canvas, ctx, dpr, history:[], future:[] }
   activeIndex: -1,
   drawing: false,
-  maxHistory: 40
+  maxHistory: 40,
+  compact: false
 };
 
-// ---------- IndexedDB (same as before) ----------
+// ---------- IndexedDB ----------
 const DB_NAME = 'A5WhiteboardDB';
 const DB_VERSION = 1;
 const STORE = 'pages';
@@ -46,7 +63,7 @@ function openDB(){
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: 'id' }); // id = sessionName
+        db.createObjectStore(STORE, { keyPath: 'id' });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -91,6 +108,7 @@ updateSwatch(state.color);
 makePage();
 selectPage(0);
 wireUI();
+wireDock();
 wireKeyboard();
 addResizeObservers();
 
@@ -104,30 +122,11 @@ function wireUI(){
     UI.sizeValue.textContent = `${state.size} px`;
   });
 
-  UI.addPageBtn.addEventListener('click', () => {
-    const idx = makePage();
-    selectPage(idx);
-  });
+  UI.addPageBtn.addEventListener('click', () => { const idx = makePage(); selectPage(idx); });
+  UI.clearBtn.addEventListener('click', () => { clearActivePage(); pushHistory(getActivePage()); });
 
-  UI.clearBtn.addEventListener('click', () => {
-    clearActivePage();
-    pushHistory(getActivePage());
-  });
-
-  UI.saveBtn.addEventListener('click', async () => {
-    const name = UI.sessionName.value.trim();
-    const blobs = await Promise.all(state.pages.map(pageToBlobOpaque));
-    await saveSession(name, blobs);
-    pulse(UI.saveBtn, '✅ Saved');
-  });
-
-  UI.loadBtn.addEventListener('click', async () => {
-    const name = UI.sessionName.value.trim();
-    const rec = await loadSession(name);
-    if (rec) { await restoreFromRecord(rec); pulse(UI.loadBtn, '📂 Loaded'); }
-    else { pulse(UI.loadBtn, '⚠️ Not found'); }
-  });
-
+  UI.saveBtn.addEventListener('click', saveAll);
+  UI.loadBtn.addEventListener('click', loadAll);
   UI.exportBtn.addEventListener('click', exportActivePNG);
 
   // Colour wheel + hex
@@ -135,31 +134,83 @@ function wireUI(){
   UI.colorWheel.addEventListener('pointermove', onWheelPickMove);
   UI.colorWheel.addEventListener('pointerup', onWheelPickEnd);
   UI.colorWheel.addEventListener('pointerleave', onWheelPickEnd);
-
   UI.colorHex.addEventListener('change', () => {
     const val = UI.colorHex.value.trim();
-    const ok = trySetStrokeStyle(val);
-    if (!ok) UI.colorHex.value = state.color;
-    updateSwatch(state.color);
+    if (trySetStrokeStyle(val)) { updateSwatch(state.color); } else { UI.colorHex.value = state.color; }
   });
 
-  // Undo/Redo buttons
+  // Undo/Redo
   UI.undoBtn.addEventListener('click', undo);
   UI.redoBtn.addEventListener('click', redo);
 
-  // Fullscreen
+  // Fullscreen & Compact
   UI.fullscreenBtn.addEventListener('click', toggleFullscreen);
-  document.addEventListener('fullscreenchange', () => {
-    UI.fullscreenBtn.textContent = document.fullscreenElement ? '🗗 Exit Fullscreen' : '⛶ Fullscreen';
-    layoutActivePage(true);
+  document.addEventListener('fullscreenchange', () => layoutActivePage(true));
+
+  UI.compactBtn.addEventListener('click', toggleCompact);
+}
+
+// ---------- Dock wiring (Compact mode controls) ----------
+function wireDock(){
+  UI.dockPen.addEventListener('click', () => setTool('pen'));
+  UI.dockEraser.addEventListener('click', () => setTool('eraser'));
+  UI.dockSizeMinus.addEventListener('click', () => { UI.size.value = Math.max(1, state.size - 2); UI.size.dispatchEvent(new Event('input')); });
+  UI.dockSizePlus.addEventListener('click', () => { UI.size.value = Math.min(60, state.size + 2); UI.size.dispatchEvent(new Event('input')); });
+  UI.dockColor.addEventListener('input', (e) => { setPenColor(e.target.value); });
+
+  UI.dockPrev.addEventListener('click', () => selectPage(Math.max(0, state.activeIndex - 1)));
+  UI.dockNext.addEventListener('click', () => selectPage(Math.min(state.pages.length - 1, state.activeIndex + 1)));
+
+  UI.dockMenu.addEventListener('click', () => {
+    UI.dockMenuPanel.hidden = !UI.dockMenuPanel.hidden;
+  });
+  // menu actions
+  UI.dockSave.addEventListener('click', saveAll);
+  UI.dockLoad.addEventListener('click', loadAll);
+  UI.dockExport.addEventListener('click', exportActivePNG);
+  UI.dockExit.addEventListener('click', () => toggleCompact(false));
+
+  // close menu when tapping outside
+  document.addEventListener('pointerdown', (e) => {
+    if (!UI.mobileDock.contains(e.target)) UI.dockMenuPanel.hidden = true;
   });
 }
 
+async function saveAll(){
+  const name = UI.sessionName.value.trim();
+  const blobs = await Promise.all(state.pages.map(pageToBlobOpaque));
+  await saveSession(name, blobs);
+  pulse(UI.saveBtn, '✅ Saved');
+}
+async function loadAll(){
+  const name = UI.sessionName.value.trim();
+  const rec = await loadSession(name);
+  if (rec) { await restoreFromRecord(rec); pulse(UI.loadBtn, '📂 Loaded'); }
+  else { pulse(UI.loadBtn, '⚠️ Not found'); }
+}
+
+function toggleCompact(force){
+  if (typeof force === 'boolean') state.compact = force;
+  else state.compact = !state.compact;
+  document.body.classList.toggle('compact', state.compact);
+  // ensure canvas relayout, and close dock menu
+  UI.dockMenuPanel.hidden = true;
+  layoutActivePage(true);
+}
+
+function toggleFullscreen(){
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen?.();
+  } else {
+    document.exitFullscreen?.();
+  }
+}
+
+// ---------- Keyboard ----------
 function wireKeyboard(){
   window.addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase();
 
-    // Undo/Redo
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && k === 'z') { e.preventDefault(); undo(); return; }
     if ((e.ctrlKey || e.metaKey) && (e.shiftKey && k === 'z')) { e.preventDefault(); redo(); return; }
     if ((e.ctrlKey) && k === 'y') { e.preventDefault(); redo(); return; }
@@ -170,20 +221,24 @@ function wireKeyboard(){
     if (k === 'c') { clearActivePage(); pushHistory(getActivePage()); }
     if (k === '[') { UI.size.value = Math.max(1, state.size - 1); UI.size.dispatchEvent(new Event('input')); }
     if (k === ']') { UI.size.value = Math.min(60, state.size + 1); UI.size.dispatchEvent(new Event('input')); }
-    if (k === 's') UI.saveBtn.click();
-    if (k === 'l') UI.loadBtn.click();
-    if (k === 'd') UI.exportBtn.click();
-    if (k === 'f') UI.fullscreenBtn.click();
+    if (k === 's') saveAll();
+    if (k === 'l') loadAll();
+    if (k === 'd') exportActivePNG();
+    if (k === 'f') toggleFullscreen();
+    if (k === 'z') toggleCompact();
   });
 }
 
+// ---------- Tool / Pages ----------
 function setTool(tool){
   state.tool = tool;
   const isPen = tool === 'pen';
-  UI.penBtn.classList.toggle('active', isPen);
-  UI.penBtn.setAttribute('aria-pressed', isPen);
-  UI.eraserBtn.classList.toggle('active', !isPen);
-  UI.eraserBtn.setAttribute('aria-pressed', !isPen);
+  UI.penBtn?.classList.toggle('active', isPen);
+  UI.penBtn?.setAttribute('aria-pressed', isPen);
+  UI.eraserBtn?.classList.toggle('active', !isPen);
+  UI.eraserBtn?.setAttribute('aria-pressed', !isPen);
+  UI.dockPen?.classList.toggle('active', isPen);
+  UI.dockEraser?.classList.toggle('active', !isPen);
 
   const page = getActivePage();
   if (page){
@@ -192,7 +247,6 @@ function setTool(tool){
   }
 }
 
-// ---------- Pages ----------
 function makePage(){
   const canvas = document.createElement('canvas');
   canvas.className = 'page-canvas';
@@ -462,16 +516,13 @@ function setPenColor(cssColor){
   if (!trySetStrokeStyle(cssColor)) return false;
   updateSwatch(state.color);
   UI.colorHex.value = state.color;
+  UI.dockColor.value = state.color.startsWith('#') ? state.color : UI.dockColor.value;
   return true;
 }
 function trySetStrokeStyle(cssColor){
   const test = document.createElement('canvas').getContext('2d');
-  try {
-    test.strokeStyle = cssColor;
-    state.color = cssColor;
-    const page = getActivePage();
-    if (page && state.tool === 'pen') page.ctx.strokeStyle = state.color;
-    return true;
+  try { test.strokeStyle = cssColor; state.color = cssColor;
+    const page = getActivePage(); if (page && state.tool === 'pen') page.ctx.strokeStyle = state.color; return true;
   } catch { return false; }
 }
 function updateSwatch(color){
@@ -495,7 +546,7 @@ function hue2rgb(p,q,t){ if (t<0) t+=1; if (t>1) t-=1;
 }
 function rgbToHex(r,g,b){ const h=n=>n.toString(16).padStart(2,'0'); return `#${h(r)}${h(g)}${h(b)}`; }
 
-// ---------- Fit-to-screen & buffer sync ----------
+// ---------- Fit-to-screen ----------
 function addResizeObservers(){
   const ro = new ResizeObserver(() => layoutActivePage(true));
   ro.observe(UI.pageStage);
@@ -514,25 +565,17 @@ function layoutPageToFit(page, preserve=true){
 
   let targetW = availW;
   let targetH = targetW / A5_ASPECT;
-  if (targetH > availH) {
-    targetH = availH;
-    targetW = targetH * A5_ASPECT;
-  }
+  if (targetH > availH) { targetH = availH; targetW = targetH * A5_ASPECT; }
 
   page.canvas.style.width = `${Math.floor(targetW)}px`;
   page.canvas.style.height = `${Math.floor(targetH)}px`;
-
   syncBufferToDisplay(page, preserve);
 }
 function syncBufferToDisplay(page, preserveContent){
   const dpr = Math.max(1, window.devicePixelRatio || 1);
   const cssW = Math.floor(parseFloat(page.canvas.style.width));
   const cssH = Math.floor(parseFloat(page.canvas.style.height));
-  const need =
-    page.canvas.width !== Math.round(cssW * dpr) ||
-    page.canvas.height !== Math.round(cssH * dpr) ||
-    page.dpr !== dpr;
-
+  const need = page.canvas.width !== Math.round(cssW * dpr) || page.canvas.height !== Math.round(cssH * dpr) || page.dpr !== dpr;
   if (!need) return;
 
   let snap = null;
@@ -555,8 +598,7 @@ function syncBufferToDisplay(page, preserveContent){
   if (snap){
     const temp = document.createElement('canvas');
     temp.width = snap.width; temp.height = snap.height;
-    const tctx = temp.getContext('2d');
-    tctx.putImageData(snap, 0, 0);
+    const tctx = temp.getContext('2d'); tctx.putImageData(snap, 0, 0);
     page.ctx.save(); page.ctx.setTransform(1,0,0,1,0,0);
     page.ctx.drawImage(temp, 0, 0, page.canvas.width, page.canvas.height);
     page.ctx.restore();
@@ -564,20 +606,9 @@ function syncBufferToDisplay(page, preserveContent){
   updateUndoRedoButtons();
 }
 
-// ---------- Fullscreen ----------
-function toggleFullscreen(){
-  if (!document.fullscreenElement) {
-    (document.documentElement.requestFullscreen?.bind(document.documentElement) ||
-     document.body.requestFullscreen?.bind(document.body) ||
-     (()=>{}))();
-  } else {
-    document.exitFullscreen?.();
-  }
-}
-
-// ---------- UI sugar ----------
+// ---------- Helpers ----------
 function pulse(btn, text){
+  if (!btn) return;
   const old = btn.textContent;
-  btn.textContent = text;
-  setTimeout(()=>btn.textContent = old, 900);
+  btn.textContent = text; setTimeout(()=>btn.textContent = old, 900);
 }
