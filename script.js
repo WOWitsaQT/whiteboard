@@ -19,8 +19,7 @@ const UI = {
   dockNext: document.getElementById('dockNext'),
   dockPageLabel: document.getElementById('dockPageLabel'),
   dockAddPage: document.getElementById('dockAddPage'),
-  dockClear: document.getElementById('dockClear'),
-
+  
   // Corner tab
   cornerPanel:    document.getElementById('cornerPanel'),
   cornerToggle:   document.getElementById('cornerToggle'),
@@ -136,7 +135,6 @@ function wireDock(){
   UI.dockNext.addEventListener('click', () => selectPage(Math.min(state.pages.length - 1, state.activeIndex + 1)));
   UI.dockAddPage.addEventListener('click', () => { const i = makePage(); selectPage(i); });
 
-  UI.dockClear.addEventListener('click', () => { clearActivePage(); pushHistory(getActivePage()); });
 }
 
 function setBrushSize(px){
