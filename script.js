@@ -1,51 +1,33 @@
-// === A5 Whiteboard Survey (All-in-one) ===
-// - A5 canvas auto-fits any screen; preserves strokes on resize/orientation
-// - Pen/Eraser, size, colour wheel + hex
-// - Multi-page; undo/redo per page
-// - Save/Load by session name (IndexedDB, private to device)
-// - Export current page PNG
-// - Fullscreen toggle; Compact (Zen) mode + floating dock
-// - Top-left corner tab (☰) for Save/Load/Export
+// === A5 Whiteboard Survey (Compact-only, responsive UI) ===
+// - Single compact UI (no normal mode)
+// - Dock + corner tab scale via CSS clamp/dvh
+// - A5 canvas auto-fits and preserves strokes on resize/orientation
+// - Pen/Eraser, size, undo/redo, color, pages, add page
+// - Save/Load (IndexedDB private), Export PNG
 
 const A5_ASPECT = 148 / 210;
 
 // ---------- UI references ----------
 const UI = {
-  penBtn: document.getElementById('penBtn'),
-  eraserBtn: document.getElementById('eraserBtn'),
-  size: document.getElementById('size'),
-  sizeValue: document.getElementById('sizeValue'),
-  addPageBtn: document.getElementById('addPageBtn'),
-  clearBtn: document.getElementById('clearBtn'),
-  saveBtn: document.getElementById('saveBtn'),
-  loadBtn: document.getElementById('loadBtn'),
-  exportBtn: document.getElementById('exportBtn'),
-  pagesList: document.getElementById('pagesList'),
   pageStage: document.getElementById('pageStage'),
-  colorWheel: document.getElementById('colorWheel'),
-  colorHex: document.getElementById('colorHex'),
-  currentSwatch: document.getElementById('currentSwatch'),
-  undoBtn: document.getElementById('undoBtn'),
-  redoBtn: document.getElementById('redoBtn'),
-  sessionName: document.getElementById('sessionName'),
-  fullscreenBtn: document.getElementById('fullscreenBtn'),
-  compactBtn: document.getElementById('compactBtn'),
 
   // Dock
-  mobileDock: document.getElementById('mobileDock'),
   dockPen: document.getElementById('dockPen'),
   dockEraser: document.getElementById('dockEraser'),
   dockSizeMinus: document.getElementById('dockSizeMinus'),
   dockSizePlus: document.getElementById('dockSizePlus'),
+  dockSizeLabel: document.getElementById('dockSizeLabel'),
+  dockUndo: document.getElementById('dockUndo'),
+  dockRedo: document.getElementById('dockRedo'),
   dockColor: document.getElementById('dockColor'),
   dockPrev: document.getElementById('dockPrev'),
   dockNext: document.getElementById('dockNext'),
+  dockPageLabel: document.getElementById('dockPageLabel'),
+  dockAddPage: document.getElementById('dockAddPage'),
   dockMenu: document.getElementById('dockMenu'),
   dockMenuPanel: document.getElementById('dockMenuPanel'),
-  dockSave: document.getElementById('dockSave'),
-  dockLoad: document.getElementById('dockLoad'),
   dockExport: document.getElementById('dockExport'),
-  dockExit: document.getElementById('dockExit'),
+  dockClear: document.getElementById('dockClear'),
 
   // Corner tab
   cornerPanel:    document.getElementById('cornerPanel'),
@@ -57,15 +39,15 @@ const UI = {
   cornerExport:   document.getElementById('cornerExport'),
 };
 
+// ---------- State ----------
 let state = {
   tool: 'pen',
-  size: parseInt(UI.size.value, 10),
+  size: 8,
   color: '#111111',
   pages: [], // { id, canvas, ctx, dpr, history:[], future:[] }
   activeIndex: -1,
   drawing: false,
   maxHistory: 40,
-  compact: false
 };
 
 // ---------- IndexedDB ----------
@@ -119,106 +101,63 @@ function blobToArrayBuffer(blob){
 function arrayBufferToBlob(buf, type='image/png'){ return new Blob([buf], { type }); }
 
 // ---------- Init ----------
-UI.sizeValue.textContent = `${state.size} px`;
-drawColourWheel(UI.colorWheel);
-updateSwatch(state.color);
+UI.dockSizeLabel.textContent = `${state.size}px`;
+setTool('pen');
 
 makePage();
 selectPage(0);
-wireUI();
 wireDock();
 wireCornerTab();
 wireKeyboard();
 addResizeObservers();
 
-// ---------- Wiring ----------
-function wireUI(){
-  UI.penBtn.addEventListener('click', () => setTool('pen'));
-  UI.eraserBtn.addEventListener('click', () => setTool('eraser'));
-
-  UI.size.addEventListener('input', (e) => {
-    state.size = parseInt(e.target.value, 10);
-    UI.sizeValue.textContent = `${state.size} px`;
-  });
-
-  UI.addPageBtn.addEventListener('click', () => { const idx = makePage(); selectPage(idx); });
-  UI.clearBtn.addEventListener('click', () => { clearActivePage(); pushHistory(getActivePage()); });
-
-  UI.saveBtn.addEventListener('click', saveAll);
-  UI.loadBtn.addEventListener('click', loadAll);
-  UI.exportBtn.addEventListener('click', exportActivePNG);
-
-  // Colour wheel + hex
-  UI.colorWheel.addEventListener('pointerdown', onWheelPickStart);
-  UI.colorWheel.addEventListener('pointermove', onWheelPickMove);
-  UI.colorWheel.addEventListener('pointerup', onWheelPickEnd);
-  UI.colorWheel.addEventListener('pointerleave', onWheelPickEnd);
-  UI.colorHex.addEventListener('change', () => {
-    const val = UI.colorHex.value.trim();
-    if (trySetStrokeStyle(val)) { updateSwatch(state.color); } else { UI.colorHex.value = state.color; }
-  });
-
-  // Undo/Redo
-  UI.undoBtn.addEventListener('click', undo);
-  UI.redoBtn.addEventListener('click', redo);
-
-  // Fullscreen & Compact
-  UI.fullscreenBtn.addEventListener('click', toggleFullscreen);
-  document.addEventListener('fullscreenchange', () => layoutActivePage(true));
-
-  UI.compactBtn.addEventListener('click', toggleCompact);
-}
-
+// ---------- Wiring: Dock ----------
 function wireDock(){
   UI.dockPen.addEventListener('click', () => setTool('pen'));
   UI.dockEraser.addEventListener('click', () => setTool('eraser'));
-  UI.dockSizeMinus.addEventListener('click', () => { UI.size.value = Math.max(1, state.size - 2); UI.size.dispatchEvent(new Event('input')); });
-  UI.dockSizePlus.addEventListener('click', () => { UI.size.value = Math.min(60, state.size + 2); UI.size.dispatchEvent(new Event('input')); });
-  UI.dockColor.addEventListener('input', (e) => { setPenColor(e.target.value); });
+
+  UI.dockSizeMinus.addEventListener('click', () => setBrushSize(Math.max(1, state.size - 2)));
+  UI.dockSizePlus.addEventListener('click', () => setBrushSize(Math.min(60, state.size + 2)));
+
+  UI.dockUndo.addEventListener('click', undo);
+  UI.dockRedo.addEventListener('click', redo);
+
+  UI.dockColor.addEventListener('input', (e) => setPenColor(e.target.value));
 
   UI.dockPrev.addEventListener('click', () => selectPage(Math.max(0, state.activeIndex - 1)));
   UI.dockNext.addEventListener('click', () => selectPage(Math.min(state.pages.length - 1, state.activeIndex + 1)));
+  UI.dockAddPage.addEventListener('click', () => { const i = makePage(); selectPage(i); });
 
-  UI.dockMenu.addEventListener('click', () => {
-    UI.dockMenuPanel.hidden = !UI.dockMenuPanel.hidden;
-  });
-  // dock menu actions
-  UI.dockSave.addEventListener('click', saveAll);
-  UI.dockLoad.addEventListener('click', loadAll);
+  UI.dockMenu.addEventListener('click', () => UI.dockMenuPanel.hidden = !UI.dockMenuPanel.hidden);
   UI.dockExport.addEventListener('click', exportActivePNG);
-  UI.dockExit.addEventListener('click', () => toggleCompact(false));
+  UI.dockClear.addEventListener('click', () => { clearActivePage(); pushHistory(getActivePage()); UI.dockMenuPanel.hidden = true; });
 
+  // close menu when tapping outside
   document.addEventListener('pointerdown', (e) => {
-    if (!UI.mobileDock.contains(e.target)) UI.dockMenuPanel.hidden = true;
+    if (!UI.dockMenuPanel.contains(e.target) && e.target !== UI.dockMenu) UI.dockMenuPanel.hidden = true;
   });
 }
 
-function wireCornerTab(){
-  if (!UI.cornerToggle) return;
+function setBrushSize(px){
+  state.size = px|0;
+  UI.dockSizeLabel.textContent = `${state.size}px`;
+  const p = getActivePage();
+  if (p) p.ctx.lineWidth = state.size;
+}
 
+// ---------- Wiring: Corner Tab ----------
+function wireCornerTab(){
   UI.cornerToggle.addEventListener('click', () => {
     const open = UI.cornerPanel.getAttribute('data-open') === 'true';
     setCornerOpen(!open);
   });
-
   document.addEventListener('pointerdown', (e) => {
     if (!UI.cornerPanel.contains(e.target)) setCornerOpen(false);
   });
 
-  // sync session names (toolbar <-> corner tab)
-  if (UI.sessionName && UI.cornerSession){
-    UI.cornerSession.value = UI.sessionName.value;
-    UI.sessionName.addEventListener('input', () => {
-      if (document.activeElement !== UI.cornerSession) UI.cornerSession.value = UI.sessionName.value;
-    });
-    UI.cornerSession.addEventListener('input', () => {
-      if (document.activeElement !== UI.sessionName) UI.sessionName.value = UI.cornerSession.value;
-    });
-  }
-
-  UI.cornerSave?.addEventListener('click', saveAll);
-  UI.cornerLoad?.addEventListener('click', loadAll);
-  UI.cornerExport?.addEventListener('click', exportActivePNG);
+  UI.cornerSave.addEventListener('click', saveAll);
+  UI.cornerLoad.addEventListener('click', loadAll);
+  UI.cornerExport.addEventListener('click', exportActivePNG);
 }
 
 function setCornerOpen(open){
@@ -227,25 +166,20 @@ function setCornerOpen(open){
   UI.cornerContent.hidden = !open;
 }
 
+// ---------- Keyboard (optional helpers) ----------
 function wireKeyboard(){
   window.addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase();
-
     if ((e.ctrlKey || e.metaKey) && !e.shiftKey && k === 'z') { e.preventDefault(); undo(); return; }
     if ((e.ctrlKey || e.metaKey) && (e.shiftKey && k === 'z')) { e.preventDefault(); redo(); return; }
     if ((e.ctrlKey) && k === 'y') { e.preventDefault(); redo(); return; }
 
     if (k === 'p') setTool('pen');
     if (k === 'e') setTool('eraser');
+    if (k === '[') setBrushSize(Math.max(1, state.size - 1));
+    if (k === ']') setBrushSize(Math.min(60, state.size + 1));
     if (k === 'n') { const i = makePage(); selectPage(i); }
-    if (k === 'c') { clearActivePage(); pushHistory(getActivePage()); }
-    if (k === '[') { UI.size.value = Math.max(1, state.size - 1); UI.size.dispatchEvent(new Event('input')); }
-    if (k === ']') { UI.size.value = Math.min(60, state.size + 1); UI.size.dispatchEvent(new Event('input')); }
-    if (k === 's') saveAll();
-    if (k === 'l') loadAll();
     if (k === 'd') exportActivePNG();
-    if (k === 'f') toggleFullscreen();
-    if (k === 'z') toggleCompact();
   });
 }
 
@@ -253,18 +187,29 @@ function wireKeyboard(){
 function setTool(tool){
   state.tool = tool;
   const isPen = tool === 'pen';
-  UI.penBtn?.classList.toggle('active', isPen);
-  UI.penBtn?.setAttribute('aria-pressed', isPen);
-  UI.eraserBtn?.classList.toggle('active', !isPen);
-  UI.eraserBtn?.setAttribute('aria-pressed', !isPen);
-  UI.dockPen?.classList.toggle('active', isPen);
-  UI.dockEraser?.classList.toggle('active', !isPen);
-
+  UI.dockPen.classList.toggle('active', isPen);
+  UI.dockEraser.classList.toggle('active', !isPen);
   const page = getActivePage();
   if (page){
     page.ctx.globalCompositeOperation = isPen ? 'source-over' : 'destination-out';
     page.canvas.style.cursor = isPen ? 'crosshair' : 'cell';
   }
+}
+
+function setPenColor(cssColor){
+  if (!trySetStrokeStyle(cssColor)) return;
+  if (state.color.startsWith('#')) UI.dockColor.value = state.color;
+}
+
+function trySetStrokeStyle(cssColor){
+  const t = document.createElement('canvas').getContext('2d');
+  try {
+    t.strokeStyle = cssColor;
+    state.color = cssColor;
+    const p = getActivePage();
+    if (p && state.tool === 'pen') p.ctx.strokeStyle = state.color;
+    return true;
+  } catch { return false; }
 }
 
 // ---------- Pages ----------
@@ -279,42 +224,31 @@ function makePage(){
   state.pages.push(page);
 
   bindDrawingEvents(page);
-  addPageListItem(state.pages.length - 1);
-
   layoutPageToFit(page, false);
   pushHistory(page, true);
 
+  updatePageLabel();
   return state.pages.length - 1;
-}
-
-function addPageListItem(index){
-  const li = document.createElement('li');
-  const btn = document.createElement('button');
-  btn.type = 'button';
-  btn.textContent = `Page ${index + 1}`;
-  btn.setAttribute('role', 'tab');
-  btn.setAttribute('aria-selected', 'false');
-  btn.addEventListener('click', () => selectPage(index));
-  li.appendChild(btn);
-  UI.pagesList.appendChild(li);
 }
 
 function selectPage(index){
   if (index < 0 || index >= state.pages.length) return;
-  state.pages.forEach((p, i) => p.canvas.classList.toggle('active', i === index));
-  [...UI.pagesList.querySelectorAll('button')].forEach((b, i) => {
-    b.setAttribute('aria-selected', i === index ? 'true' : 'false');
-  });
+  state.pages.forEach((p, i) => p.canvas.style.display = i === index ? 'block' : 'none');
   state.activeIndex = index;
-  setTool(state.tool);
 
   const page = getActivePage();
   if (page){
     page.ctx.lineWidth = state.size;
     page.ctx.strokeStyle = state.color;
+    page.ctx.globalCompositeOperation = state.tool === 'pen' ? 'source-over' : 'destination-out';
     layoutPageToFit(page, true);
     updateUndoRedoButtons();
   }
+  updatePageLabel();
+}
+
+function updatePageLabel(){
+  UI.dockPageLabel.textContent = `${state.activeIndex + 1}/${state.pages.length}`;
 }
 
 function getActivePage(){ return state.pages[state.activeIndex] || null; }
@@ -403,7 +337,6 @@ function undo(){
 
   updateUndoRedoButtons();
 }
-
 function redo(){
   const page = getActivePage();
   if (!page || page.future.length === 0) return;
@@ -422,28 +355,39 @@ function redo(){
 
   updateUndoRedoButtons();
 }
-
 function updateUndoRedoButtons(){
   const page = getActivePage();
-  if (!page){ UI.undoBtn.disabled = UI.redoBtn.disabled = true; return; }
-  UI.undoBtn.disabled = page.history.length === 0;
-  UI.redoBtn.disabled = page.future.length === 0;
+  UI.dockUndo.disabled = !page || page.history.length === 0;
+  UI.dockRedo.disabled = !page || page.future.length === 0;
 }
 
 // ---------- Save/Load/Export ----------
 async function saveAll(){
-  const name = (UI.sessionName?.value || '').trim();
-  const use = name || (UI.cornerSession?.value || '').trim() || 'default';
+  const name = (UI.cornerSession?.value || '').trim() || 'default';
   const blobs = await Promise.all(state.pages.map(pageToBlobOpaque));
-  await saveSession(use, blobs);
-  pulse(UI.saveBtn, '✅ Saved');
+  await saveSession(name, blobs);
+  flashCorner('✅ Saved');
 }
 async function loadAll(){
-  const name = (UI.sessionName?.value || '').trim();
-  const use = name || (UI.cornerSession?.value || '').trim() || 'default';
-  const rec = await loadSession(use);
-  if (rec) { await restoreFromRecord(rec); pulse(UI.loadBtn, '📂 Loaded'); }
-  else { pulse(UI.loadBtn, '⚠️ Not found'); }
+  const name = (UI.cornerSession?.value || '').trim() || 'default';
+  const rec = await loadSession(name);
+  if (!rec) { flashCorner('⚠️ Not found'); return; }
+
+  // wipe existing
+  state.pages.forEach(p => p.canvas.remove());
+  state.pages = [];
+
+  for (let i = 0; i < rec.pages.length; i++){
+    const idx = makePage();
+    const page = state.pages[idx];
+    const blob = arrayBufferToBlob(rec.pages[i], 'image/png');
+    await drawBlobOnCanvas(blob, page.canvas);
+    page.history = []; page.future = [];
+    pushHistory(page, true);
+    layoutPageToFit(page, true);
+  }
+  selectPage(0);
+  flashCorner('📂 Loaded');
 }
 
 function pageToBlobOpaque(page){
@@ -457,23 +401,6 @@ function pageToBlobOpaque(page){
     tctx.drawImage(page.canvas, 0, 0);
     temp.toBlob(b => resolve(b), 'image/png', 1.0);
   });
-}
-
-async function restoreFromRecord(rec){
-  state.pages.forEach(p => p.canvas.remove());
-  state.pages = [];
-  UI.pagesList.innerHTML = '';
-
-  for (let i = 0; i < rec.pages.length; i++){
-    const idx = makePage();
-    const page = state.pages[idx];
-    const blob = arrayBufferToBlob(rec.pages[i], 'image/png');
-    await drawBlobOnCanvas(blob, page.canvas);
-    page.history = []; page.future = [];
-    pushHistory(page, true);
-    layoutPageToFit(page, true);
-  }
-  selectPage(0);
 }
 
 function drawBlobOnCanvas(blob, canvas){
@@ -504,82 +431,22 @@ async function exportActivePNG(){
 
   const url = temp.toDataURL('image/png');
   const a = document.createElement('a');
+  const base = (UI.cornerSession?.value || 'session').trim() || 'session';
   a.href = url;
-  a.download = `${(UI.sessionName?.value || UI.cornerSession?.value || 'session').trim()}_page_${state.activeIndex + 1}.png`;
+  a.download = `${base}_page_${state.activeIndex + 1}.png`;
   a.click();
   URL.revokeObjectURL?.(url);
 }
 
-// ---------- Colour wheel ----------
-let wheelPicking = false;
-function drawColourWheel(canvas){
-  const ctx = canvas.getContext('2d');
-  const { width, height } = canvas;
-  const cx = width/2, cy = height/2;
-  const radius = Math.min(cx, cy) - 1;
-  const img = ctx.createImageData(width, height);
-  for (let y = 0; y < height; y++){
-    for (let x = 0; x < width; x++){
-      const dx = x - cx, dy = y - cy;
-      const dist = Math.sqrt(dx*dx + dy*dy);
-      const i = (y * width + x) * 4;
-      if (dist <= radius){
-        const angle = Math.atan2(dy, dx);
-        const hue = ((angle * 180 / Math.PI) + 360) % 360;
-        const t = Math.min(1, dist / radius);
-        const s = 1, l = 0.5 + (t-0.5)*0.6;
-        const { r, g, b } = hslToRgb(hue/360, s, l);
-        img.data[i] = r; img.data[i+1] = g; img.data[i+2] = b; img.data[i+3] = 255;
-      } else { img.data[i+3] = 0; }
-    }
-  }
-  ctx.putImageData(img, 0, 0);
+function flashCorner(text){
+  // tiny visual feedback by temporarily changing the toggle label
+  const old = UI.cornerToggle.textContent;
+  UI.cornerToggle.textContent = text;
+  setTimeout(()=> UI.cornerToggle.textContent = old, 900);
 }
-function onWheelPickStart(e){ wheelPicking = true; pickColorFromWheel(e); }
-function onWheelPickMove(e){ if (wheelPicking) pickColorFromWheel(e); }
-function onWheelPickEnd(){ wheelPicking = false; }
-function pickColorFromWheel(e){
-  const rect = UI.colorWheel.getBoundingClientRect();
-  const x = Math.floor(e.clientX - rect.left);
-  const y = Math.floor(e.clientY - rect.top);
-  const ctx = UI.colorWheel.getContext('2d');
-  const d = ctx.getImageData(x, y, 1, 1).data;
-  if (d[3] === 0) return;
-  const hex = rgbToHex(d[0], d[1], d[2]);
-  setPenColor(hex);
-}
-function setPenColor(cssColor){
-  if (!trySetStrokeStyle(cssColor)) return false;
-  updateSwatch(state.color);
-  UI.colorHex.value = state.color;
-  if (state.color.startsWith('#') && UI.dockColor) UI.dockColor.value = state.color;
-  return true;
-}
-function trySetStrokeStyle(cssColor){
-  const test = document.createElement('canvas').getContext('2d');
-  try { test.strokeStyle = cssColor; state.color = cssColor;
-    const page = getActivePage(); if (page && state.tool === 'pen') page.ctx.strokeStyle = state.color; return true;
-  } catch { return false; }
-}
-function updateSwatch(color){
-  UI.currentSwatch.style.setProperty('--swatch', color);
-  UI.currentSwatch.style.background = color;
-}
-function hslToRgb(h, s, l){
-  if (s === 0) { const v = Math.round(l*255); return { r:v, g:v, b:v }; }
-  const q = l < 0.5 ? l*(1+s) : l + s - l*s;
-  const p = 2*l - q;
-  const r = Math.round(hue2rgb(p,q,h+1/3)*255);
-  const g = Math.round(hue2rgb(p,q,h)*255);
-  const b = Math.round(hue2rgb(p,q,h-1/3)*255);
-  return { r,g,b };
-}
-function hue2rgb(p,q,t){ if (t<0) t+=1; if (t>1) t-=1;
-  if (t<1/6) return p+(q-p)*6*t;
-  if (t<1/2) return q;
-  if (t<2/3) return p+(q-p)*(2/3-t)*6;
-  return p;
-}
+
+// ---------- Colour wheel (we use native color input on dock) ----------
+// (No custom wheel needed here; keeping helpers for completeness)
 function rgbToHex(r,g,b){ const h=n=>n.toString(16).padStart(2,'0'); return `#${h(r)}${h(g)}${h(b)}`; }
 
 // ---------- Fit-to-screen ----------
@@ -642,23 +509,5 @@ function syncBufferToDisplay(page, preserveContent){
   updateUndoRedoButtons();
 }
 
-// ---------- Modes ----------
-function toggleCompact(force){
-  if (typeof force === 'boolean') state.compact = force;
-  else state.compact = !state.compact;
-  document.body.classList.toggle('compact', state.compact);
-  setCornerOpen(false);              // tidy
-  UI.dockMenuPanel.hidden = true;    // tidy
-  layoutActivePage(true);
-}
-function toggleFullscreen(){
-  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
-  else document.exitFullscreen?.();
-}
-
 // ---------- Helpers ----------
-function pulse(btn, text){
-  if (!btn) return;
-  const old = btn.textContent;
-  btn.textContent = text; setTimeout(()=>btn.textContent = old, 900);
-}
+function getActivePage(){ return state.pages[state.activeIndex] || null; }
