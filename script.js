@@ -1,8 +1,15 @@
-// === A5 Whiteboard Survey (Compact/Zen Mode for Mobile) ===
+// === A5 Whiteboard Survey (All-in-one) ===
+// - A5 canvas auto-fits any screen; preserves strokes on resize/orientation
+// - Pen/Eraser, size, colour wheel + hex
+// - Multi-page; undo/redo per page
+// - Save/Load by session name (IndexedDB, private to device)
+// - Export current page PNG
+// - Fullscreen toggle; Compact (Zen) mode + floating dock
+// - Top-left corner tab (☰) for Save/Load/Export
 
 const A5_ASPECT = 148 / 210;
 
-// UI refs
+// ---------- UI references ----------
 const UI = {
   penBtn: document.getElementById('penBtn'),
   eraserBtn: document.getElementById('eraserBtn'),
@@ -39,6 +46,15 @@ const UI = {
   dockLoad: document.getElementById('dockLoad'),
   dockExport: document.getElementById('dockExport'),
   dockExit: document.getElementById('dockExit'),
+
+  // Corner tab
+  cornerPanel:    document.getElementById('cornerPanel'),
+  cornerToggle:   document.getElementById('cornerToggle'),
+  cornerContent:  document.getElementById('cornerContent'),
+  cornerSession:  document.getElementById('cornerSessionName'),
+  cornerSave:     document.getElementById('cornerSave'),
+  cornerLoad:     document.getElementById('cornerLoad'),
+  cornerExport:   document.getElementById('cornerExport'),
 };
 
 let state = {
@@ -63,7 +79,7 @@ function openDB(){
     req.onupgradeneeded = () => {
       const db = req.result;
       if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: 'id' });
+        db.createObjectStore(STORE, { keyPath: 'id' }); // id = session name
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -74,9 +90,11 @@ async function saveSession(sessionId, pngBlobs){
   if (!sessionId) throw new Error('Session name required');
   const db = await openDB();
   const tx = db.transaction(STORE, 'readwrite');
-  const store = tx.objectStore(STORE);
-  const record = { id: sessionId, ts: Date.now(), pages: await Promise.all(pngBlobs.map(blobToArrayBuffer)) };
-  store.put(record);
+  tx.objectStore(STORE).put({
+    id: sessionId,
+    ts: Date.now(),
+    pages: await Promise.all(pngBlobs.map(blobToArrayBuffer))
+  });
   return new Promise((res, rej)=>{ tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error); });
 }
 async function loadSession(sessionId){
@@ -109,10 +127,11 @@ makePage();
 selectPage(0);
 wireUI();
 wireDock();
+wireCornerTab();
 wireKeyboard();
 addResizeObservers();
 
-// ---------- UI wiring ----------
+// ---------- Wiring ----------
 function wireUI(){
   UI.penBtn.addEventListener('click', () => setTool('pen'));
   UI.eraserBtn.addEventListener('click', () => setTool('eraser'));
@@ -150,7 +169,6 @@ function wireUI(){
   UI.compactBtn.addEventListener('click', toggleCompact);
 }
 
-// ---------- Dock wiring (Compact mode controls) ----------
 function wireDock(){
   UI.dockPen.addEventListener('click', () => setTool('pen'));
   UI.dockEraser.addEventListener('click', () => setTool('eraser'));
@@ -164,49 +182,51 @@ function wireDock(){
   UI.dockMenu.addEventListener('click', () => {
     UI.dockMenuPanel.hidden = !UI.dockMenuPanel.hidden;
   });
-  // menu actions
+  // dock menu actions
   UI.dockSave.addEventListener('click', saveAll);
   UI.dockLoad.addEventListener('click', loadAll);
   UI.dockExport.addEventListener('click', exportActivePNG);
   UI.dockExit.addEventListener('click', () => toggleCompact(false));
 
-  // close menu when tapping outside
   document.addEventListener('pointerdown', (e) => {
     if (!UI.mobileDock.contains(e.target)) UI.dockMenuPanel.hidden = true;
   });
 }
 
-async function saveAll(){
-  const name = UI.sessionName.value.trim();
-  const blobs = await Promise.all(state.pages.map(pageToBlobOpaque));
-  await saveSession(name, blobs);
-  pulse(UI.saveBtn, '✅ Saved');
-}
-async function loadAll(){
-  const name = UI.sessionName.value.trim();
-  const rec = await loadSession(name);
-  if (rec) { await restoreFromRecord(rec); pulse(UI.loadBtn, '📂 Loaded'); }
-  else { pulse(UI.loadBtn, '⚠️ Not found'); }
-}
+function wireCornerTab(){
+  if (!UI.cornerToggle) return;
 
-function toggleCompact(force){
-  if (typeof force === 'boolean') state.compact = force;
-  else state.compact = !state.compact;
-  document.body.classList.toggle('compact', state.compact);
-  // ensure canvas relayout, and close dock menu
-  UI.dockMenuPanel.hidden = true;
-  layoutActivePage(true);
-}
+  UI.cornerToggle.addEventListener('click', () => {
+    const open = UI.cornerPanel.getAttribute('data-open') === 'true';
+    setCornerOpen(!open);
+  });
 
-function toggleFullscreen(){
-  if (!document.fullscreenElement) {
-    document.documentElement.requestFullscreen?.();
-  } else {
-    document.exitFullscreen?.();
+  document.addEventListener('pointerdown', (e) => {
+    if (!UI.cornerPanel.contains(e.target)) setCornerOpen(false);
+  });
+
+  // sync session names (toolbar <-> corner tab)
+  if (UI.sessionName && UI.cornerSession){
+    UI.cornerSession.value = UI.sessionName.value;
+    UI.sessionName.addEventListener('input', () => {
+      if (document.activeElement !== UI.cornerSession) UI.cornerSession.value = UI.sessionName.value;
+    });
+    UI.cornerSession.addEventListener('input', () => {
+      if (document.activeElement !== UI.sessionName) UI.sessionName.value = UI.cornerSession.value;
+    });
   }
+
+  UI.cornerSave?.addEventListener('click', saveAll);
+  UI.cornerLoad?.addEventListener('click', loadAll);
+  UI.cornerExport?.addEventListener('click', exportActivePNG);
 }
 
-// ---------- Keyboard ----------
+function setCornerOpen(open){
+  UI.cornerPanel.setAttribute('data-open', open ? 'true' : 'false');
+  UI.cornerToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  UI.cornerContent.hidden = !open;
+}
+
 function wireKeyboard(){
   window.addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase();
@@ -229,7 +249,7 @@ function wireKeyboard(){
   });
 }
 
-// ---------- Tool / Pages ----------
+// ---------- Tools ----------
 function setTool(tool){
   state.tool = tool;
   const isPen = tool === 'pen';
@@ -247,6 +267,7 @@ function setTool(tool){
   }
 }
 
+// ---------- Pages ----------
 function makePage(){
   const canvas = document.createElement('canvas');
   canvas.className = 'page-canvas';
@@ -410,6 +431,21 @@ function updateUndoRedoButtons(){
 }
 
 // ---------- Save/Load/Export ----------
+async function saveAll(){
+  const name = (UI.sessionName?.value || '').trim();
+  const use = name || (UI.cornerSession?.value || '').trim() || 'default';
+  const blobs = await Promise.all(state.pages.map(pageToBlobOpaque));
+  await saveSession(use, blobs);
+  pulse(UI.saveBtn, '✅ Saved');
+}
+async function loadAll(){
+  const name = (UI.sessionName?.value || '').trim();
+  const use = name || (UI.cornerSession?.value || '').trim() || 'default';
+  const rec = await loadSession(use);
+  if (rec) { await restoreFromRecord(rec); pulse(UI.loadBtn, '📂 Loaded'); }
+  else { pulse(UI.loadBtn, '⚠️ Not found'); }
+}
+
 function pageToBlobOpaque(page){
   return new Promise(resolve => {
     const temp = document.createElement('canvas');
@@ -469,7 +505,7 @@ async function exportActivePNG(){
   const url = temp.toDataURL('image/png');
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${UI.sessionName.value.trim() || 'session'}_page_${state.activeIndex + 1}.png`;
+  a.download = `${(UI.sessionName?.value || UI.cornerSession?.value || 'session').trim()}_page_${state.activeIndex + 1}.png`;
   a.click();
   URL.revokeObjectURL?.(url);
 }
@@ -516,7 +552,7 @@ function setPenColor(cssColor){
   if (!trySetStrokeStyle(cssColor)) return false;
   updateSwatch(state.color);
   UI.colorHex.value = state.color;
-  UI.dockColor.value = state.color.startsWith('#') ? state.color : UI.dockColor.value;
+  if (state.color.startsWith('#') && UI.dockColor) UI.dockColor.value = state.color;
   return true;
 }
 function trySetStrokeStyle(cssColor){
@@ -604,6 +640,20 @@ function syncBufferToDisplay(page, preserveContent){
     page.ctx.restore();
   }
   updateUndoRedoButtons();
+}
+
+// ---------- Modes ----------
+function toggleCompact(force){
+  if (typeof force === 'boolean') state.compact = force;
+  else state.compact = !state.compact;
+  document.body.classList.toggle('compact', state.compact);
+  setCornerOpen(false);              // tidy
+  UI.dockMenuPanel.hidden = true;    // tidy
+  layoutActivePage(true);
+}
+function toggleFullscreen(){
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen?.();
+  else document.exitFullscreen?.();
 }
 
 // ---------- Helpers ----------
