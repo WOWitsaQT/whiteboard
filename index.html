@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>A5 Whiteboard Survey</title>
+  <title>A5 Whiteboard Survey (Compact)</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <link rel="stylesheet" href="./style.css" />
 </head>
@@ -14,8 +14,8 @@
 
   <!-- Floating dock (auto scales) -->
   <div id="mobileDock" class="mobile-dock" aria-label="Mobile controls">
-    <button id="dockPen" class="dock-btn" title="Pen"></button>
-    <button id="dockEraser" class="dock-btn" title="Eraser"></button>
+    <button id="dockPen" class="dock-btn" title="Pen">✏️</button>
+    <button id="dockEraser" class="dock-btn" title="Eraser">🩹</button>
 
     <button id="dockSizeMinus" class="dock-btn" title="Brush smaller">−</button>
     <span id="dockSizeLabel" class="dock-label" aria-live="polite">8px</span>
@@ -33,12 +33,8 @@
     <button id="dockNext" class="dock-btn" title="Next page">▶︎</button>
 
     <button id="dockAddPage" class="dock-btn" title="Add page">➕</button>
-
-    <button id="dockMenu" class="dock-btn" title="More">⋮</button>
-    <div id="dockMenuPanel" class="dock-menu" hidden>
-      <button id="dockExport" class="dock-menu-item">Export PNG</button>
-      <button id="dockClear" class="dock-menu-item">Clear Page</button>
-    </div>
+    <!-- NEW: Clear Page on the dock -->
+    <button id="dockClear" class="dock-btn" title="Clear current page">🧹</button>
   </div>
 
   <!-- Corner actions tab (top-left; auto scales) -->
@@ -52,9 +48,9 @@
         <input id="cornerSessionName" class="corner-input" placeholder="session name" />
       </div>
       <div class="corner-actions">
-        <button id="cornerSave" class="corner-btn">Save</button>
-        <button id="cornerLoad" class="corner-btn">Load</button>
-        <button id="cornerExport" class="corner-btn">Export PNG</button>
+        <button id="cornerSave" class="corner-btn">💾 Save</button>
+        <button id="cornerLoad" class="corner-btn">📂 Load</button>
+        <button id="cornerExport" class="corner-btn">🖼️ Export PNG</button>
       </div>
     </div>
   </div>
