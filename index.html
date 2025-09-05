@@ -7,13 +7,13 @@
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <!-- Stage: fills entire screen -->
+  <!-- Stage: fills entire screen, space reserved for dock -->
   <main class="stage" aria-live="polite">
     <div id="pageStage" class="page-stage"></div>
   </main>
 
-  <!-- Floating dock (auto scales) -->
-  <div id="mobileDock" class="mobile-dock" aria-label="Mobile controls">
+  <!-- Bottom-pinned dock (toolbar) -->
+  <div id="mobileDock" class="mobile-dock" aria-label="Drawing controls">
     <button id="dockPen" class="dock-btn" title="Pen">✏️</button>
     <button id="dockEraser" class="dock-btn" title="Eraser">🩹</button>
 
@@ -33,13 +33,13 @@
     <button id="dockNext" class="dock-btn" title="Next page">▶︎</button>
 
     <button id="dockAddPage" class="dock-btn" title="Add page">➕</button>
-    <!-- NEW: Clear Page on the dock -->
     <button id="dockClear" class="dock-btn" title="Clear current page">🧹</button>
   </div>
 
-  <!-- Corner actions tab (top-left; auto scales) -->
+  <!-- Corner actions tab (top-left) -->
   <div id="cornerPanel" class="corner-panel" data-open="false">
-    <button id="cornerToggle" class="corner-toggle" aria-expanded="false" aria-controls="cornerContent" title="Open actions">
+    <button id="cornerToggle" class="corner-toggle" type="button"
+            aria-expanded="false" aria-controls="cornerContent" title="Open actions">
       ☰
     </button>
     <div id="cornerContent" class="corner-content" hidden>
