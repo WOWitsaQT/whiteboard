@@ -7,107 +7,54 @@
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <header class="toolbar" role="toolbar" aria-label="Drawing toolbar">
-    <div class="tool-group">
-      <button id="penBtn" class="btn active" data-tool="pen" aria-pressed="true" title="Pen (P)">✏️ Pen</button>
-      <button id="eraserBtn" class="btn" data-tool="eraser" aria-pressed="false" title="Eraser (E)">🩹 Eraser</button>
-    </div>
-
-    <div class="tool-group">
-      <label for="size" class="label">Size</label>
-      <input id="size" type="range" min="1" max="60" value="8" />
-      <span id="sizeValue" class="mono">8 px</span>
-    </div>
-
-    <!-- Colour controls -->
-    <div class="tool-group color-group">
-      <canvas id="colorWheel" width="120" height="120" aria-label="Colour wheel picker"></canvas>
-      <div class="swatch-column">
-        <div class="swatch-row">
-          <span class="label">Colour</span>
-          <input id="colorHex" type="text" value="#111111" class="hex" maxlength="9" title="Hex or CSS color (e.g. #ff00aa or rgba(0,0,0,.7))" />
-        </div>
-        <div class="swatch" id="currentSwatch" title="Current pen colour"></div>
-      </div>
-    </div>
-
-    <div class="tool-group wrap">
-      <button id="undoBtn" class="btn" title="Undo (Ctrl/Cmd+Z)">↩️ Undo</button>
-      <button id="redoBtn" class="btn" title="Redo (Ctrl/Cmd+Shift+Z / Ctrl+Y)">↪️ Redo</button>
-      <button id="clearBtn" class="btn" title="Clear current page (C)">🧹 Clear</button>
-    </div>
-
-    <div class="tool-group wrap">
-      <input id="sessionName" class="hex" placeholder="session name (e.g. classA-01)" value="default" />
-      <button id="addPageBtn" class="btn" title="Add A5 page (N)">➕ Add Page</button>
-      <button id="saveBtn" class="btn" title="Save pages (S)">💾 Save</button>
-      <button id="loadBtn" class="btn" title="Load session (L)">📂 Load</button>
-      <button id="exportBtn" class="btn" title="Export current page as PNG (D)">🖼️ Export PNG</button>
-      <button id="fullscreenBtn" class="btn" title="Toggle fullscreen (F)">⛶ Fullscreen</button>
-      <button id="compactBtn" class="btn" title="Hide UI / Compact mode (Z)">🗜️ Compact</button>
-    </div>
-  </header>
-
-  <main class="workspace">
-    <aside class="sidebar" aria-label="Pages">
-      <div class="pages-header">
-        <h2>Pages</h2>
-        <small class="muted">A5 • Auto-fit</small>
-      </div>
-      <ol id="pagesList" class="pages-list" role="tablist" aria-orientation="vertical"></ol>
-    </aside>
-
-    <section class="stage" aria-live="polite">
-      <div id="pageStage" class="page-stage"></div>
-    </section>
+  <!-- Stage: fills entire screen -->
+  <main class="stage" aria-live="polite">
+    <div id="pageStage" class="page-stage"></div>
   </main>
 
-  <footer class="footer">
-    <small>
-      Keys: <strong>P</strong>=pen, <strong>E</strong>=eraser, <strong>[</strong>/<strong>]</strong>=size,
-      <strong>N</strong>=add page, <strong>C</strong>=clear, <strong>S</strong>=save,
-      <strong>L</strong>=load, <strong>D</strong>=export PNG, <strong>F</strong>=fullscreen,
-      <strong>Z</strong>=toggle compact, <strong>Undo</strong>=Ctrl/Cmd+Z, <strong>Redo</strong>=Ctrl/Cmd+Shift+Z or Ctrl+Y.
-    </small>
-  </footer>
+  <!-- Floating dock (auto scales) -->
+  <div id="mobileDock" class="mobile-dock" aria-label="Mobile controls">
+    <button id="dockPen" class="dock-btn" title="Pen"></button>
+    <button id="dockEraser" class="dock-btn" title="Eraser"></button>
 
-  <!-- Floating mobile dock (shows in Compact mode) -->
-  <div id="mobileDock" class="mobile-dock" aria-live="polite" aria-label="Mobile controls">
-    <button id="dockPen" class="dock-btn" title="Pen">✏️</button>
-    <button id="dockEraser" class="dock-btn" title="Eraser">🩹</button>
     <button id="dockSizeMinus" class="dock-btn" title="Brush smaller">−</button>
+    <span id="dockSizeLabel" class="dock-label" aria-live="polite">8px</span>
     <button id="dockSizePlus" class="dock-btn" title="Brush larger">＋</button>
-    <label class="dock-color">
+
+    <button id="dockUndo" class="dock-btn" title="Undo">↩️</button>
+    <button id="dockRedo" class="dock-btn" title="Redo">↪️</button>
+
+    <label class="dock-color" title="Pick colour">
       <input id="dockColor" type="color" value="#111111" aria-label="Pick colour" />
     </label>
-    <button id="dockPrev" class="dock-btn" title="Prev page">◀︎</button>
-    <button id="dockNext" class="dock-btn" title="Next page">▶︎</button>
-    <button id="dockMenu" class="dock-btn" title="More">⋮</button>
 
-    <!-- Quick menu -->
+    <button id="dockPrev" class="dock-btn" title="Prev page">◀︎</button>
+    <span id="dockPageLabel" class="dock-label" aria-live="polite">1/1</span>
+    <button id="dockNext" class="dock-btn" title="Next page">▶︎</button>
+
+    <button id="dockAddPage" class="dock-btn" title="Add page">➕</button>
+
+    <button id="dockMenu" class="dock-btn" title="More">⋮</button>
     <div id="dockMenuPanel" class="dock-menu" hidden>
-      <button id="dockSave" class="dock-menu-item">💾 Save</button>
-      <button id="dockLoad" class="dock-menu-item">📂 Load</button>
-      <button id="dockExport" class="dock-menu-item">🖼️ Export PNG</button>
-      <button id="dockExit" class="dock-menu-item">↩︎ Exit Compact</button>
+      <button id="dockExport" class="dock-menu-item">Export PNG</button>
+      <button id="dockClear" class="dock-menu-item">Clear Page</button>
     </div>
   </div>
 
-  <!-- Corner actions tab (top-left) -->
+  <!-- Corner actions tab (top-left; auto scales) -->
   <div id="cornerPanel" class="corner-panel" data-open="false">
     <button id="cornerToggle" class="corner-toggle" aria-expanded="false" aria-controls="cornerContent" title="Open actions">
       ☰
     </button>
-
     <div id="cornerContent" class="corner-content" hidden>
       <div class="corner-row">
         <label for="cornerSessionName" class="corner-label">Session</label>
         <input id="cornerSessionName" class="corner-input" placeholder="session name" />
       </div>
       <div class="corner-actions">
-        <button id="cornerSave" class="corner-btn">💾 Save</button>
-        <button id="cornerLoad" class="corner-btn">📂 Load</button>
-        <button id="cornerExport" class="corner-btn">🖼️ Export PNG</button>
+        <button id="cornerSave" class="corner-btn">Save</button>
+        <button id="cornerLoad" class="corner-btn">Load</button>
+        <button id="cornerExport" class="corner-btn">Export PNG</button>
       </div>
     </div>
   </div>
