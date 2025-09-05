@@ -1,4 +1,4 @@
-// === A5 Whiteboard Survey (Compact-only, dock has Clear button) ===
+// === A5 Whiteboard Survey (Compact-only, dock pinned to bottom) ===
 const A5_ASPECT = 148 / 210;
 
 // ---------- UI references ----------
@@ -6,6 +6,7 @@ const UI = {
   pageStage: document.getElementById('pageStage'),
 
   // Dock
+  mobileDock: document.getElementById('mobileDock'),
   dockPen: document.getElementById('dockPen'),
   dockEraser: document.getElementById('dockEraser'),
   dockSizeMinus: document.getElementById('dockSizeMinus'),
@@ -101,6 +102,22 @@ wireDock();
 wireCornerTab();
 wireKeyboard();
 addResizeObservers();
+observeDock(); // keep --dock-h synced to actual dock height
+
+// ---------- Dock sizing sync ----------
+function syncDockPadding(){
+  if (!UI.mobileDock) return;
+  const h = UI.mobileDock.getBoundingClientRect().height || 0;
+  document.documentElement.style.setProperty('--dock-h', `${Math.ceil(h)}px`);
+}
+function observeDock(){
+  if (!UI.mobileDock) return;
+  const ro = new ResizeObserver(syncDockPadding);
+  ro.observe(UI.mobileDock);
+  window.addEventListener('resize', syncDockPadding);
+  window.addEventListener('orientationchange', () => setTimeout(syncDockPadding, 50));
+  syncDockPadding();
+}
 
 // ---------- Wiring: Dock ----------
 function wireDock(){
@@ -119,7 +136,6 @@ function wireDock(){
   UI.dockNext.addEventListener('click', () => selectPage(Math.min(state.pages.length - 1, state.activeIndex + 1)));
   UI.dockAddPage.addEventListener('click', () => { const i = makePage(); selectPage(i); });
 
-  // NEW: clear current page from the dock
   UI.dockClear.addEventListener('click', () => { clearActivePage(); pushHistory(getActivePage()); });
 }
 
@@ -132,11 +148,15 @@ function setBrushSize(px){
 
 // ---------- Wiring: Corner Tab ----------
 function wireCornerTab(){
-  UI.cornerToggle.addEventListener('click', () => {
+  if (!UI.cornerToggle || !UI.cornerContent || !UI.cornerPanel) return;
+
+  UI.cornerToggle.addEventListener('click', (e) => {
+    e.stopPropagation();
     const open = UI.cornerPanel.getAttribute('data-open') === 'true';
     setCornerOpen(!open);
   });
-  document.addEventListener('pointerdown', (e) => {
+
+  document.addEventListener('click', (e) => {
     if (!UI.cornerPanel.contains(e.target)) setCornerOpen(false);
   });
 
@@ -144,7 +164,6 @@ function wireCornerTab(){
   UI.cornerLoad.addEventListener('click', loadAll);
   UI.cornerExport.addEventListener('click', exportActivePNG);
 }
-
 function setCornerOpen(open){
   UI.cornerPanel.setAttribute('data-open', open ? 'true' : 'false');
   UI.cornerToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
@@ -180,12 +199,10 @@ function setTool(tool){
     page.canvas.style.cursor = isPen ? 'crosshair' : 'cell';
   }
 }
-
 function setPenColor(cssColor){
   if (!trySetStrokeStyle(cssColor)) return;
   if (state.color.startsWith('#')) UI.dockColor.value = state.color;
 }
-
 function trySetStrokeStyle(cssColor){
   const t = document.createElement('canvas').getContext('2d');
   try {
@@ -215,7 +232,6 @@ function makePage(){
   updatePageLabel();
   return state.pages.length - 1;
 }
-
 function selectPage(index){
   if (index < 0 || index >= state.pages.length) return;
   state.pages.forEach((p, i) => p.canvas.style.display = i === index ? 'block' : 'none');
@@ -247,7 +263,6 @@ function bindDrawingEvents(page){
     page.ctx.moveTo(pt.x, pt.y);
     pushHistory(page); // snapshot BEFORE drawing
   };
-
   const onMove = (e) => {
     if (!state.drawing) return;
     const pt = relPoint(c, e);
@@ -256,7 +271,6 @@ function bindDrawingEvents(page){
     page.ctx.lineTo(pt.x, pt.y);
     page.ctx.stroke();
   };
-
   const endStroke = (e) => {
     if (!state.drawing) return;
     const pt = relPoint(c, e);
@@ -273,12 +287,10 @@ function bindDrawingEvents(page){
   c.addEventListener('pointercancel', endStroke);
   c.addEventListener('pointerleave', endStroke);
 }
-
 function relPoint(canvas, e){
   const r = canvas.getBoundingClientRect();
   return { x: e.clientX - r.left, y: e.clientY - r.top };
 }
-
 function clearActivePage(){
   const page = getActivePage();
   if (!page) return;
@@ -287,7 +299,6 @@ function clearActivePage(){
   ctx.clearRect(0,0,canvas.width, canvas.height);
   ctx.restore();
 }
-
 function pushHistory(page, force=false){
   const { canvas, history } = page;
   const ctx = canvas.getContext('2d');
@@ -299,7 +310,6 @@ function pushHistory(page, force=false){
   if (history.length > state.maxHistory) history.shift();
   updateUndoRedoButtons();
 }
-
 function undo(){
   const page = getActivePage();
   if (!page || page.history.length === 0) return;
@@ -383,7 +393,6 @@ function pageToBlobOpaque(page){
     temp.toBlob(b => resolve(b), 'image/png', 1.0);
   });
 }
-
 function drawBlobOnCanvas(blob, canvas){
   return new Promise((resolve) => {
     const img = new Image();
@@ -398,7 +407,6 @@ function drawBlobOnCanvas(blob, canvas){
     img.src = URL.createObjectURL(blob);
   });
 }
-
 async function exportActivePNG(){
   const page = getActivePage();
   if (!page) return;
@@ -418,7 +426,6 @@ async function exportActivePNG(){
   a.click();
   URL.revokeObjectURL?.(url);
 }
-
 function flashCorner(text){
   const old = UI.cornerToggle.textContent;
   UI.cornerToggle.textContent = text;
@@ -429,8 +436,8 @@ function flashCorner(text){
 function addResizeObservers(){
   const ro = new ResizeObserver(() => layoutActivePage(true));
   ro.observe(UI.pageStage);
-  window.addEventListener('orientationchange', () => layoutActivePage(true));
   window.addEventListener('resize', () => layoutActivePage(true));
+  window.addEventListener('orientationchange', () => layoutActivePage(true));
 }
 function layoutActivePage(preserve=true){
   const page = getActivePage();
@@ -443,8 +450,8 @@ function layoutPageToFit(page, preserve=true){
   const availH = Math.max(100, rect.height - 16);
 
   let targetW = availW;
-  let targetH = targetW / (148/210);
-  if (targetH > availH) { targetH = availH; targetW = targetH * (148/210); }
+  let targetH = targetW / A5_ASPECT;
+  if (targetH > availH) { targetH = availH; targetW = targetH * A5_ASPECT; }
 
   page.canvas.style.width = `${Math.floor(targetW)}px`;
   page.canvas.style.height = `${Math.floor(targetH)}px`;
