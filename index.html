@@ -44,6 +44,7 @@
       <button id="loadBtn" class="btn" title="Load session (L)">📂 Load</button>
       <button id="exportBtn" class="btn" title="Export current page as PNG (D)">🖼️ Export PNG</button>
       <button id="fullscreenBtn" class="btn" title="Toggle fullscreen (F)">⛶ Fullscreen</button>
+      <button id="compactBtn" class="btn" title="Hide UI / Compact mode (Z)">🗜️ Compact</button>
     </div>
   </header>
 
@@ -66,12 +67,32 @@
       Keys: <strong>P</strong>=pen, <strong>E</strong>=eraser, <strong>[</strong>/<strong>]</strong>=size,
       <strong>N</strong>=add page, <strong>C</strong>=clear,
       <strong>S</strong>=save, <strong>L</strong>=load,
-      <strong>D</strong>=export PNG,
-      <strong>F</strong>=fullscreen,
-      <strong>Undo</strong>=Ctrl/Cmd+Z, <strong>Redo</strong>=Ctrl/Cmd+Shift+Z or Ctrl+Y.
-      Sessions are saved privately in IndexedDB on this device.
+      <strong>D</strong>=export PNG, <strong>F</strong>=fullscreen,
+      <strong>Z</strong>=toggle compact, <strong>Undo</strong>=Ctrl/Cmd+Z, <strong>Redo</strong>=Ctrl/Cmd+Shift+Z or Ctrl+Y.
     </small>
   </footer>
+
+  <!-- Floating mobile dock (shows when in .compact) -->
+  <div id="mobileDock" class="mobile-dock" aria-live="polite" aria-label="Mobile controls">
+    <button id="dockPen" class="dock-btn" title="Pen">✏️</button>
+    <button id="dockEraser" class="dock-btn" title="Eraser">🩹</button>
+    <button id="dockSizeMinus" class="dock-btn" title="Brush smaller">−</button>
+    <button id="dockSizePlus" class="dock-btn" title="Brush larger">＋</button>
+    <label class="dock-color">
+      <input id="dockColor" type="color" value="#111111" aria-label="Pick colour" />
+    </label>
+    <button id="dockPrev" class="dock-btn" title="Prev page">◀︎</button>
+    <button id="dockNext" class="dock-btn" title="Next page">▶︎</button>
+    <button id="dockMenu" class="dock-btn" title="More">⋮</button>
+
+    <!-- Quick menu -->
+    <div id="dockMenuPanel" class="dock-menu" hidden>
+      <button id="dockSave" class="dock-menu-item">💾 Save</button>
+      <button id="dockLoad" class="dock-menu-item">📂 Load</button>
+      <button id="dockExport" class="dock-menu-item">🖼️ Export PNG</button>
+      <button id="dockExit" class="dock-menu-item">↩︎ Exit Compact</button>
+    </div>
+  </div>
 
   <script src="./script.js"></script>
 </body>
